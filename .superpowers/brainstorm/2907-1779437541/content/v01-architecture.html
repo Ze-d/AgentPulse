@@ -1,0 +1,80 @@
+<h2>AgentPulse v0.1 — 架构总览</h2>
+<p class="subtitle">Claude Code 优先 · Tauri 2 + Vue 3 + Rust + SQLite</p>
+
+<div class="section">
+  <h3>四层架构</h3>
+  <div class="mockup">
+    <div class="mockup-header">Architecture Overview</div>
+    <div class="mockup-body">
+      <div style="display:flex;flex-direction:column;gap:12px;padding:16px;font-family:monospace;font-size:13px;background:#1e1e2e;color:#cdd6f4;border-radius:8px">
+        <div style="background:#313244;padding:12px;border-radius:6px;text-align:center;border:1px solid #cba6f7">
+          <div style="color:#cba6f7;font-weight:bold">┌──────────────────────────────────┐</div>
+          <div style="color:#cba6f7">│  Floating Window (Vue3 + Tailwind) │</div>
+          <div style="color:#cba6f7">│  始终置顶 · 可拖动 · 无边框卡片      │</div>
+          <div style="color:#cba6f7">└──────────────┬───────────────────┘</div>
+        </div>
+        <div style="text-align:center;color:#a6adc8;font-size:18px">↑ Tauri events</div>
+        <div style="background:#313244;padding:12px;border-radius:6px;text-align:center;border:1px solid #89b4fa">
+          <div style="color:#89b4fa;font-weight:bold">┌──────────────────────────────────┐</div>
+          <div style="color:#89b4fa">│   Local Monitor Core (Rust)       │</div>
+          <div style="color:#89b4fa">│   HTTP Server :17878 + SQLite     │</div>
+          <div style="color:#89b4fa">│   状态机 · 持久化 · 进程兜底        │</div>
+          <div style="color:#89b4fa">└──────┬──────────┬──────────┬─────┘</div>
+        </div>
+        <div style="display:flex;gap:12px">
+          <div style="flex:1;background:#313244;padding:10px;border-radius:6px;text-align:center;border:1px solid #a6e3a1">
+            <div style="color:#a6e3a1;font-weight:bold">Hooks In</div>
+            <div style="color:#6c7086;font-size:11px">Claude Code hooks<br/>→ POST /api/events</div>
+          </div>
+          <div style="flex:1;background:#313244;padding:10px;border-radius:6px;text-align:center;border:1px solid #f9e2af">
+            <div style="color:#f9e2af;font-weight:bold">File In</div>
+            <div style="color:#6c7086;font-size:11px">transcript 解析<br/>(v0.2)</div>
+          </div>
+          <div style="flex:1;background:#313244;padding:10px;border-radius:6px;text-align:center;border:1px solid #fab387">
+            <div style="color:#fab387;font-weight:bold">Process In</div>
+            <div style="color:#6c7086;font-size:11px">进程监控兜底<br/>(v0.3)</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>v0.1 范围</h3>
+  <table>
+    <tr><th style="text-align:left;background:#a6e3a1;color:#1e1e2e;padding:4px 8px">✅ 包含</th><th style="text-align:left;background:#f38ba8;color:#1e1e2e;padding:4px 8px">❌ 不包含</th></tr>
+    <tr>
+      <td style="padding:8px;vertical-align:top">
+        • Tauri 2 悬浮窗（置顶 + 可拖动）<br/>
+        • Rust 本地 HTTP server :17878<br/>
+        • SQLite 事件 & session 存储<br/>
+        • Claude Code hooks 接入（5 个事件）<br/>
+        • 状态卡片：source、project、status、duration<br/>
+        • 系统托盘（显示/隐藏、退出）
+      </td>
+      <td style="padding:8px;vertical-align:top">
+        • Codex 接入<br/>
+        • transcript 深度解析<br/>
+        • 进程树扫描<br/>
+        • 历史记录页面<br/>
+        • WSL 支持<br/>
+        • 多项目并行<br/>
+        • 远程同步 / IDE 插件
+      </td>
+    </tr>
+  </table>
+</div>
+
+<div class="section">
+  <h3>v0.1 Claude Code Hook 事件映射</h3>
+  <table>
+    <tr><th>Claude Code Event</th><th>AgentPulse Status</th><th>触发时机</th></tr>
+    <tr><td>SessionStart</td><td><span style="color:#a6e3a1">starting → running</span></td><td>Claude Code 启动</td></tr>
+    <tr><td>PreToolUse / PostToolUse</td><td><span style="color:#f9e2af">tool_running ↔ running</span></td><td>工具执行前后</td></tr>
+    <tr><td>Notification (permission_prompt)</td><td><span style="color:#fab387">waiting_permission</span></td><td>等待用户批准</td></tr>
+    <tr><td>Notification (idle_prompt)</td><td><span style="color:#fab387">waiting_input</span></td><td>等待用户输入</td></tr>
+    <tr><td>Stop</td><td><span style="color:#a6e3a1">completed</span></td><td>任务完成</td></tr>
+    <tr><td>PostToolUseFailure</td><td><span style="color:#f38ba8">failed</span></td><td>工具执行失败</td></tr>
+  </table>
+</div>

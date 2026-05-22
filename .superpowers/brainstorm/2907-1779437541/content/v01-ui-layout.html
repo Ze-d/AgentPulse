@@ -1,0 +1,82 @@
+<h2>悬浮窗 UI 布局 — v0.1</h2>
+<p class="subtitle">始终置顶 · 无边框 · 可拖动 · Tailwind CSS 卡片式</p>
+
+<div class="section">
+  <h3>默认小窗模式 (Default)</h3>
+  <div class="mockup">
+    <div class="mockup-header">Floating Panel — 320×200px</div>
+    <div class="mockup-body">
+      <div style="background:#1e1e2e;border-radius:12px;padding:16px;width:320px;font-family:monospace;font-size:12px;color:#cdd6f4;box-shadow:0 8px 32px rgba(0,0,0,0.4)">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+          <span style="color:#cba6f7;font-weight:bold;font-size:14px">AgentPulse</span>
+          <span style="color:#6c7086;font-size:10px">2 active</span>
+        </div>
+        <!-- Session 1 -->
+        <div style="background:#313244;border-radius:8px;padding:10px;margin-bottom:8px;border-left:3px solid #a6e3a1">
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+            <span style="width:8px;height:8px;border-radius:50%;background:#a6e3a1;display:inline-block"></span>
+            <span style="font-weight:bold;color:#a6e3a1">Claude Code</span>
+            <span style="color:#a6adc8;margin-left:auto">12m</span>
+          </div>
+          <div style="color:#bac2de;font-size:11px">agent-runtime</div>
+          <div style="color:#6c7086;font-size:10px;margin-top:2px">tool: Bash · npm test</div>
+        </div>
+        <!-- Session 2 -->
+        <div style="background:#313244;border-radius:8px;padding:10px;border-left:3px solid #fab387">
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+            <span style="width:8px;height:8px;border-radius:50%;background:#fab387;display:inline-block"></span>
+            <span style="font-weight:bold;color:#fab387">Claude Code</span>
+            <span style="color:#a6adc8;margin-left:auto">2m</span>
+          </div>
+          <div style="color:#bac2de;font-size:11px">AgentPulse</div>
+          <div style="color:#f9e2af;font-size:10px;margin-top:2px">waiting permission...</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>点击展开模式 (Expanded)</h3>
+  <div class="mockup">
+    <div class="mockup-header">Expanded Detail — 320×280px</div>
+    <div class="mockup-body">
+      <div style="background:#1e1e2e;border-radius:12px;padding:16px;width:320px;font-family:monospace;font-size:12px;color:#cdd6f4;box-shadow:0 8px 32px rgba(0,0,0,0.4)">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+          <span style="color:#cba6f7;font-weight:bold;font-size:14px">Claude Code · agent-runtime</span>
+          <span style="color:#6c7086;font-size:10px">← 收起</span>
+        </div>
+        <div style="background:#313244;border-radius:8px;padding:12px">
+          <div style="display:grid;grid-template-columns:80px 1fr;gap:6px;font-size:11px">
+            <span style="color:#6c7086">状态</span><span style="color:#a6e3a1">running</span>
+            <span style="color:#6c7086">当前工具</span><span>Bash</span>
+            <span style="color:#6c7086">最后事件</span><span>PostToolUse</span>
+            <span style="color:#6c7086">工作目录</span><span>D:/projects/agent-runtime</span>
+            <span style="color:#6c7086">运行时间</span><span>12m 43s</span>
+            <span style="color:#6c7086">PID</span><span>28492</span>
+          </div>
+          <div style="margin-top:8px;padding:8px;background:#1e1e2e;border-radius:4px;font-size:10px;color:#a6adc8">
+            最后消息:<br/>"已完成重构，正在运行测试..."
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:10px;justify-content:flex-end">
+          <span style="color:#89b4fa;font-size:10px;cursor:pointer">打开目录</span>
+          <span style="color:#89b4fa;font-size:10px;cursor:pointer">transcript</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>视觉设计决策</h3>
+  <table>
+    <tr><th>属性</th><th>选择</th><th>说明</th></tr>
+    <tr><td>配色</td><td>Catppuccin Mocha</td><td>暗色主题，护眼，适合常驻</td></tr>
+    <tr><td>圆角</td><td>12px</td><td>现代感，柔和边界</td></tr>
+    <tr><td>状态指示</td><td>左侧色条 + 圆点</td><td>running=绿, waiting=橙, completed=蓝, failed=红</td></tr>
+    <tr><td>字体</td><td>JetBrains Mono / system mono</td><td>终端风格，信息密度高</td></tr>
+    <tr><td>尺寸</td><td>320×200 (默认) / 可缩放宽高</td><td>Mini panel，不占空间</td></tr>
+    <tr><td>层级</td><td>alwaysOnTop + skipTaskbar</td><td>Tauri window API</td></tr>
+  </table>
+</div>
