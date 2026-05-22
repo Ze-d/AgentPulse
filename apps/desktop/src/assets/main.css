@@ -1,0 +1,23 @@
+@import "tailwindcss";
+
+:root {
+  --color-base: #1e1e2e;
+  --color-surface0: #313244;
+  --color-surface1: #45475a;
+  --color-text: #cdd6f4;
+  --color-subtext0: #a6adc8;
+  --color-overlay0: #6c7086;
+  --color-green: #a6e3a1;
+  --color-red: #f38ba8;
+  --color-yellow: #f9e2af;
+  --color-blue: #89b4fa;
+  --color-mauve: #cba6f7;
+  --color-peach: #fab387;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  overflow: hidden;
+}
