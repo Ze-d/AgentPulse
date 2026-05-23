@@ -1,8 +1,13 @@
+pub mod commands;
 pub mod db;
 pub mod event_server;
 pub mod state_machine;
+pub mod tray;
+pub mod window;
 
 use serde::{Deserialize, Serialize};
+use std::sync::{Arc, Mutex};
+use db::Database;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -78,9 +83,30 @@ pub struct AgentSession {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    env_logger::init();
+
+    let database = Database::new_in_memory().expect("Failed to initialize database");
+    let db = Arc::new(Mutex::new(database));
+
+    let db_for_server = db.clone();
+    std::thread::spawn(move || {
+        let _ = event_server::EventServer::start_shared(db_for_server, "127.0.0.1:17878");
+    });
+
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_shell::init())
+        .manage(commands::AppState { db: db.clone() })
+        .invoke_handler(tauri::generate_handler![
+            commands::get_sessions,
+            commands::get_session_detail,
+            commands::get_session_events,
+        ])
+        .setup(|app| {
+            window::create_floating_window(app);
+            tray::setup_tray(app)?;
+            Ok(())
+        })
         .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .expect("error while running AgentPulse");
 }
