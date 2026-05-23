@@ -15,7 +15,7 @@ class TestBuildHookConfigs:
             assert event in configs
             assert configs[event][0]["matcher"] == ""
             command = configs[event][0]["hooks"][0]["command"]
-            assert command == "python /path/to/monitor.py"
+            assert command == 'python "/path/to/monitor.py"'
 
 
 class TestLoadSaveSettings:
