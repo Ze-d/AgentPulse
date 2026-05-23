@@ -1,4 +1,5 @@
 pub mod db;
+pub mod state_machine;
 
 use serde::{Deserialize, Serialize};
 
