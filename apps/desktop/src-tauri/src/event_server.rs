@@ -84,6 +84,11 @@ impl EventServer {
         }
     }
 
+    /// Create an EventServer from an already-shared database reference.
+    pub fn from_arc(db: Arc<Mutex<Database>>) -> Self {
+        Self { db }
+    }
+
     /// Normalize the raw JSON event, apply the state-machine transition,
     /// upsert the session, insert the event, and return both.
     pub fn handle_event(&self, raw: &serde_json::Value) -> Result<(AgentEvent, AgentSession), String> {
@@ -160,7 +165,25 @@ impl EventServer {
         let server =
             tiny_http::Server::http(addr).map_err(|e| format!("failed to start server: {}", e))?;
         let event_server = Self::new(db);
+        Self::run_server_loop(server, event_server);
+        Ok(())
+    }
 
+    /// Start the event server with a shared database reference.
+    ///
+    /// Same as `start` but accepts an `Arc<Mutex<Database>>` directly,
+    /// allowing the caller to share the same database instance with other
+    /// components (e.g. Tauri state).
+    pub fn start_shared(db: Arc<Mutex<Database>>, addr: &str) -> Result<(), String> {
+        let server =
+            tiny_http::Server::http(addr).map_err(|e| format!("failed to start server: {}", e))?;
+        let event_server = Self::from_arc(db);
+        Self::run_server_loop(server, event_server);
+        Ok(())
+    }
+
+    /// Internal: spawn a thread that runs the HTTP request loop.
+    fn run_server_loop(server: tiny_http::Server, event_server: EventServer) {
         thread::spawn(move || {
             for mut request in server.incoming_requests() {
                 let url = request.url().to_string();
@@ -210,8 +233,6 @@ impl EventServer {
                 let _ = request.respond(response);
             }
         });
-
-        Ok(())
     }
 }
 
