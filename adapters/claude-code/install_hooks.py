@@ -43,7 +43,7 @@ def build_hook_configs(monitor_script: str) -> dict:
             {
                 "matcher": "",
                 "hooks": [
-                    {"type": "command", "command": f"python {monitor_script}"}
+                    {"type": "command", "command": f'python "{monitor_script}"'}
                 ],
             }
         ]
@@ -53,16 +53,24 @@ def build_hook_configs(monitor_script: str) -> dict:
 def load_settings(path: Path) -> dict:
     """Load settings JSON from path. Returns empty dict if file missing."""
     if path.exists():
-        with open(path) as f:
-            return json.load(f)
+        try:
+            with open(path) as f:
+                return json.load(f)
+        except (json.JSONDecodeError, PermissionError) as e:
+            print(f"Error: Cannot read {path}: {e}", file=sys.stderr)
+            sys.exit(1)
     return {}
 
 
 def save_settings(path: Path, data: dict) -> None:
     """Save settings JSON to path, creating parent dirs as needed."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "w") as f:
-        json.dump(data, f, indent=2)
+    try:
+        with open(path, "w") as f:
+            json.dump(data, f, indent=2)
+    except (OSError, PermissionError) as e:
+        print(f"Error: Cannot write to {path}: {e}", file=sys.stderr)
+        sys.exit(1)
 
 
 def merge_hooks(settings: dict, hook_configs: dict) -> dict:
