@@ -247,7 +247,14 @@ cargo build --release
 ### 5.1 安装 Hooks
 
 ```powershell
+# 预览将要执行的操作
+python adapters/claude-code/install_hooks.py --dry-run
+
+# 安装 hooks
 python adapters/claude-code/install_hooks.py
+
+# 查看安装状态
+python adapters/claude-code/install_hooks.py --status
 ```
 
 这会在 `~/.claude/settings.json` 中写入 6 个 hook 事件的配置：
@@ -262,7 +269,11 @@ python adapters/claude-code/install_hooks.py
 ### 5.2 验证 Hooks 是否生效
 
 ```powershell
-cat ~/.claude/settings.json | python -m json.tool
+# 方式 1: 使用 --status
+python adapters/claude-code/install_hooks.py --status
+
+# 方式 2: 直接查看配置
+python -c "import json; from pathlib import Path; s = json.loads(Path.home().joinpath('.claude', 'settings.json').read_text()); print(json.dumps(s.get('hooks', {}), indent=2))"
 ```
 
 应能看到 `"hooks"` 字段包含 6 个事件配置，每个指向 `monitor_hook.py`。
@@ -273,11 +284,32 @@ cat ~/.claude/settings.json | python -m json.tool
 python adapters/claude-code/install_hooks.py --remove
 ```
 
-### 5.4 使用流程
+### 5.4 调试 Hook 事件
+
+```powershell
+# 测试 monitor_hook.py 是否正确解析 stdin（不发送到服务器）
+echo '{"session_id":"debug-1","cwd":"/tmp/test","hook_event_name":"SessionStart"}' | python adapters/claude-code/monitor_hook.py --test
+
+# 开启详细日志
+$env:AGENTPULSE_LOG_LEVEL = "DEBUG"
+echo '{"session_id":"debug-1","cwd":"/tmp/test","hook_event_name":"SessionStart"}' | python adapters/claude-code/monitor_hook.py
+
+# 指定事件服务器地址（如果非默认端口）
+$env:AGENTPULSE_URL = "http://127.0.0.1:9999/api/events"
+echo '...' | python adapters/claude-code/monitor_hook.py
+```
+
+### 5.5 使用流程
 
 1. 启动 AgentPulse：`npm run tauri dev`（或运行打包后的 exe）
 2. 正常使用 Claude Code
 3. AgentPulse 浮窗自动显示 CC session 状态
+
+### 5.6 安全说明
+
+- 安装和卸载操作会自动在修改前备份 `settings.json` → `settings.json.bak`
+- 重复安装不会覆盖已有配置（幂等操作），使用 `--force` 强制覆盖
+- 卸载时只移除 AgentPulse 的 6 个 hook 事件，保留其他自定义 hooks
 
 ---
 
