@@ -47,7 +47,10 @@ jobs:
 
       - name: Install frontend dependencies
         working-directory: apps/desktop
-        run: npm install
+        run: |
+          rm -rf node_modules package-lock.json
+          npm install
+        shell: bash
 
       - name: Build and publish
         uses: tauri-apps/tauri-action@v0
