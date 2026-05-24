@@ -23,5 +23,11 @@
     "typescript": "~5.6.2",
     "vite": "^6.0.3",
     "vue-tsc": "^2.1.10"
+  },
+  "optionalDependencies": {
+    "@tailwindcss/oxide-win32-x64-msvc": "4.3.0",
+    "@tailwindcss/oxide-linux-x64-gnu": "4.3.0",
+    "@tailwindcss/oxide-darwin-x64": "4.3.0",
+    "@tailwindcss/oxide-darwin-arm64": "4.3.0"
   }
 }

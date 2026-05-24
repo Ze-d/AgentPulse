@@ -3,7 +3,7 @@ name = "desktop"
 version = "0.1.0"
 description = "Local AI Coding Agent monitor — desktop overlay for Claude Code session status"
 authors = ["Kal_zed"]
-repository = "https://github.com/Kal-zed/AgentPulse"
+repository = "https://github.com/Ze-d/AgentPulse"
 license = "MIT"
 edition = "2021"
 
