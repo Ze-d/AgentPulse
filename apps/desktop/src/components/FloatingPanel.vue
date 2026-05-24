@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted } from "vue";
+import { watch, onMounted, onUnmounted } from "vue";
 import { useSessionStore } from "../stores/sessionStore";
+import { getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
 import SessionCard from "./SessionCard.vue";
 import ExpandedDetail from "./ExpandedDetail.vue";
 import { openUrl } from "@tauri-apps/plugin-opener";
@@ -26,17 +27,41 @@ function handleOpenDir(cwd: string) {
 function handleOpenTranscript(path: string) {
   openUrl(`file:///${path}`);
 }
+
+async function adjustWindowSize() {
+  const headerHeight = 40;
+  const cardHeight = 36;
+  const padding = 28;
+  const expandedExtra = store.expandedSessionId ? 120 : 0;
+
+  const contentHeight = store.sessions.length > 0
+    ? headerHeight + store.sessions.length * cardHeight + padding + expandedExtra
+    : 64;
+
+  const height = Math.min(Math.max(contentHeight, 64), 420);
+
+  try {
+    await getCurrentWindow().setSize(new LogicalSize(320, height));
+  } catch {
+    // window API may not be available in browser dev mode
+  }
+}
+
+watch(
+  () => [store.sessions.length, store.expandedSessionId],
+  () => adjustWindowSize(),
+  { immediate: true }
+);
 </script>
 
 <template>
   <div class="floating-panel">
     <div class="panel-header" data-tauri-drag-region>
-      <h1 class="text-sm font-bold" style="color: var(--color-mauve)">
-        AgentPulse
+      <h1 class="prompt">
+        <span class="path">~/agentpulse</span>
+        <span class="dollar"> $</span>
       </h1>
-      <span class="text-xs" style="color: var(--color-overlay0)">
-        {{ store.activeSessions.length }} active
-      </span>
+      <span class="count">[{{ store.activeSessions.length }} active]</span>
     </div>
 
     <div
@@ -51,15 +76,10 @@ function handleOpenTranscript(path: string) {
       class="empty-state"
       data-tauri-drag-region
     >
-      <p style="color: var(--color-overlay0); font-size: 12px">
-        No active sessions
-      </p>
-      <p style="color: var(--color-overlay0); font-size: 10px; margin-top: 4px">
-        Waiting for Claude Code hook events...
-      </p>
+      <span class="waiting">$ waiting for hooks...</span>
     </div>
 
-    <div class="session-list">
+    <div v-else class="session-list">
       <template v-for="session in store.sessions" :key="session.sessionId">
         <ExpandedDetail
           v-if="store.expandedSessionId === session.sessionId"
@@ -82,8 +102,7 @@ function handleOpenTranscript(path: string) {
 .floating-panel {
   background: var(--color-base);
   border-radius: 12px;
-  padding: 12px;
-  min-height: 100vh;
+  padding: 14px;
   height: 100vh;
   display: flex;
   flex-direction: column;
@@ -95,8 +114,8 @@ function handleOpenTranscript(path: string) {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 10px;
-  padding-bottom: 8px;
+  margin-bottom: 8px;
+  padding-bottom: 6px;
   border-bottom: 1px solid var(--color-surface0);
   cursor: grab;
 }
@@ -107,6 +126,25 @@ function handleOpenTranscript(path: string) {
 
 .panel-header:active {
   cursor: grabbing;
+}
+
+.prompt {
+  font-size: 13px;
+  font-weight: 700;
+  margin: 0;
+}
+
+.path {
+  color: var(--color-blue);
+}
+
+.dollar {
+  color: var(--color-mauve);
+}
+
+.count {
+  font-size: 11px;
+  color: var(--color-overlay0);
 }
 
 .session-list {
@@ -126,23 +164,28 @@ function handleOpenTranscript(path: string) {
 .error-banner {
   background: rgba(243, 139, 168, 0.15);
   border: 1px solid var(--color-red);
-  border-radius: 6px;
-  padding: 6px 10px;
-  margin-bottom: 8px;
+  border-radius: 4px;
+  padding: 4px 8px;
+  margin-bottom: 6px;
   font-size: 11px;
   color: var(--color-red);
 }
 
 .empty-state {
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
   flex: 1;
   cursor: grab;
+  min-height: 24px;
 }
 
 .empty-state > * {
   pointer-events: none;
+}
+
+.waiting {
+  color: var(--color-overlay0);
+  font-size: 11px;
 }
 </style>
