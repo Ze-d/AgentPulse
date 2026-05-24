@@ -15,11 +15,14 @@
         "label": "main",
         "title": "AgentPulse",
         "width": 320,
-        "height": 200,
+        "height": 72,
         "minWidth": 280,
-        "minHeight": 120,
+        "minHeight": 72,
+        "maxHeight": 420,
         "resizable": true,
         "decorations": false,
+        "transparent": true,
+        "shadow": false,
         "alwaysOnTop": true,
         "visible": true
       }

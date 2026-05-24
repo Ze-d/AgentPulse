@@ -33,7 +33,7 @@
 2. **HTTP 作为适配器协议** — Python hook 脚本通过 HTTP POST 与 Rust 后端通信，解耦语言和进程边界
 3. **共享 Arc<Mutex<Database>>** — 事件服务器线程和 Tauri command handler 共享同一数据库实例
 4. **前端轮询而非 WebSocket** — 简单可靠，2s 间隔对单用户本地场景足够
-5. **无边框置顶窗口** — `decorations: false` + `alwaysOnTop: true`，最小尺寸 280x120
+5. **无边框置顶窗口** — `decorations: false` + `alwaysOnTop: true` + `transparent: true` + `shadow: false`，最小尺寸 280x72，自适应高度最大 420px，12px 圆角，等宽字体终端风格
 6. **Python 适配器保持轻量** — 无第三方依赖，仅使用标准库 (json, urllib, argparse, logging)
 
 ## Data Flow

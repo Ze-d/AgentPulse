@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed } from "vue";
 import type { AgentSession } from "../types/agent";
 import { STATUS_COLORS, STATUS_LABELS, formatDuration } from "../types/agent";
 
@@ -10,11 +11,10 @@ const emit = defineEmits<{
   click: [sessionId: string];
 }>();
 
-const statusColor = STATUS_COLORS[props.session.status];
-const statusLabel = STATUS_LABELS[props.session.status];
-const duration = formatDuration(
-  props.session.startedAt,
-  props.session.completedAt
+const statusColor = computed(() => STATUS_COLORS[props.session.status]);
+const statusLabel = computed(() => STATUS_LABELS[props.session.status]);
+const duration = computed(() =>
+  formatDuration(props.session.startedAt, props.session.completedAt)
 );
 </script>
 
@@ -22,35 +22,17 @@ const duration = formatDuration(
   <div
     class="session-card"
     :style="{ borderLeftColor: statusColor }"
-    :class="{ 'needs-attention': session.needsAttention }"
     @click="emit('click', session.sessionId)"
   >
-    <div class="flex items-center gap-2 mb-1">
-      <span
-        class="status-dot"
-        :style="{ backgroundColor: statusColor }"
-      ></span>
-      <span class="text-sm font-semibold" style="color: var(--color-text)">
-        {{ session.source === "claude-code" ? "Claude Code" : session.source }}
+    <div class="card-row">
+      <span class="project" :style="{ color: statusColor }">
+        {{ session.source === "claude-code" ? "cc" : session.source }} &gt; {{ session.projectName }}
       </span>
-      <span class="ml-auto text-xs" style="color: var(--color-subtext0)">
-        {{ duration }}
-      </span>
+      <span class="duration">{{ duration }}</span>
+      <span class="status" :style="{ color: statusColor }">{{ statusLabel }}</span>
     </div>
-    <div class="text-xs" style="color: var(--color-subtext0)">
-      {{ session.projectName }}
-    </div>
-    <div class="flex items-center justify-between mt-1">
-      <span class="text-xs" style="color: var(--color-overlay0)">
-        {{ statusLabel }}
-      </span>
-      <span
-        v-if="session.lastToolName"
-        class="text-xs"
-        style="color: var(--color-overlay0)"
-      >
-        {{ session.lastToolName }}
-      </span>
+    <div v-if="session.lastToolName" class="card-row secondary">
+      <span class="tool">{{ session.lastToolName }}</span>
     </div>
   </div>
 </template>
@@ -58,37 +40,50 @@ const duration = formatDuration(
 <style scoped>
 .session-card {
   background: var(--color-surface0);
-  border-radius: 8px;
-  padding: 10px;
-  margin-bottom: 6px;
+  border-radius: 6px;
+  padding: 6px 10px;
+  margin-bottom: 4px;
   border-left: 3px solid;
   cursor: pointer;
-  transition: background 0.15s;
+  line-height: 1.2;
 }
 
 .session-card:hover {
   background: var(--color-surface1);
 }
 
-.needs-attention {
-  animation: pulse-border 2s infinite;
+.card-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
 }
 
-@keyframes pulse-border {
-  0%,
-  100% {
-    border-left-color: var(--color-peach);
-  }
-  50% {
-    border-left-color: transparent;
-  }
+.card-row.secondary {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  font-size: 11px;
+  margin-top: 1px;
 }
 
-.status-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  display: inline-block;
+.project {
+  font-weight: 600;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.duration {
+  color: var(--color-overlay0);
   flex-shrink: 0;
+}
+
+.status {
+  flex-shrink: 0;
+}
+
+.tool {
+  color: var(--color-overlay0);
 }
 </style>
