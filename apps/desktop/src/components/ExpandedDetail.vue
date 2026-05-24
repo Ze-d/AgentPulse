@@ -72,6 +72,7 @@ const duration = computed(() =>
   padding: 10px;
   margin-bottom: 4px;
   font-size: 12px;
+  line-height: 1.25;
 }
 
 .detail-header {

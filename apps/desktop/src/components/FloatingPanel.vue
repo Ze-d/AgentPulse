@@ -38,16 +38,16 @@ async function handleOpenTranscript(path: string) {
 }
 
 async function adjustWindowSize() {
-  const headerHeight = 40;
-  const cardHeight = 36;
-  const padding = 28;
+  const headerHeight = 28;
+  const cardHeight = 34;
+  const padding = 20;
   const expandedExtra = store.expandedSessionId ? 120 : 0;
 
   const contentHeight = store.sessions.length > 0
     ? headerHeight + store.sessions.length * cardHeight + padding + expandedExtra
-    : 64;
+    : 72;
 
-  const height = Math.min(Math.max(contentHeight, 64), 420);
+  const height = Math.min(Math.max(contentHeight, 72), 420);
 
   try {
     await getCurrentWindow().setSize(new LogicalSize(320, height));
@@ -111,20 +111,21 @@ watch(
 .floating-panel {
   background: var(--color-base);
   border-radius: 12px;
-  padding: 14px;
+  padding: 10px 12px;
   height: 100vh;
   display: flex;
   flex-direction: column;
   user-select: none;
   -webkit-user-select: none;
+  line-height: 1.2;
 }
 
 .panel-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 8px;
-  padding-bottom: 6px;
+  margin-bottom: 4px;
+  padding-bottom: 4px;
   border-bottom: 1px solid var(--color-surface0);
   cursor: grab;
 }

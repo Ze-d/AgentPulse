@@ -45,6 +45,7 @@ const duration = computed(() =>
   margin-bottom: 4px;
   border-left: 3px solid;
   cursor: pointer;
+  line-height: 1.2;
 }
 
 .session-card:hover {

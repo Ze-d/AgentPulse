@@ -23,5 +23,8 @@ body {
   background: transparent;
   overflow: hidden;
   font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.2;
   color: var(--color-text);
 }
+
