@@ -2,29 +2,42 @@
 
 ## 状态
 
-**待处理**
+**已完成** — 2026-05-24
 
-## 问题描述
+## 所做的工作
 
-需要改进和优化 AgentPulse 浮动面板的视觉样式，提升整体 UI 质感。
+Terminal Pulse 风格改造，将浮动面板从通用暗色 UI 改造为终端/CLI 风格工具伴侣。
 
-## 当前样式概况
+### 排版改造
+- 全局等宽字体栈: `Cascadia Code > JetBrains Mono > Fira Code > Consolas > monospace`
+- 标题改为 CLI prompt 风格: `~/agentpulse $`
+- 状态用彩色文字替代圆点: running/tool/waiting/done/failed
+- 卡片改为终端行式布局: `cc > project-name  1m  running`
 
-- **配色方案**: Catppuccin Mocha 暗色主题（base `#1e1e2e`，surface0 `#313244`，text `#cdd6f4`）
-- **窗口尺寸**: 320×200 浮动面板，无边框，始终置顶
-- **圆角**: 12px 整体圆角，8px 卡片圆角
-- **布局**: 单列垂直布局，header + session list
+### 布局改造
+- 面板高度自适应: 空状态 64px，根据 session 数量自动扩展，最大 420px
+- Tauri Window API 动态调整窗口大小
+- 间距收紧: 14px padding, 6-8px margin
 
-## 涉及文件
+### 白边修复
+- 窗口 `transparent: true`，四角透明无白边
 
-- [apps/desktop/src/assets/main.css](../../apps/desktop/src/assets/main.css) — CSS 变量、全局样式、Tailwind
-- [apps/desktop/src/components/FloatingPanel.vue](../../apps/desktop/src/components/FloatingPanel.vue) — 面板容器布局
-- [apps/desktop/src/components/SessionCard.vue](../../apps/desktop/src/components/SessionCard.vue) — 会话卡片样式
-- [apps/desktop/src/components/ExpandedDetail.vue](../../apps/desktop/src/components/ExpandedDetail.vue) — 展开详情样式
-- [apps/desktop/src/App.vue](../../apps/desktop/src/App.vue) — 根组件样式
+### 颜色
+- 保持 Catppuccin Mocha 配色方案不变
 
-## 待明确
+## 实现记录
 
-- 具体需要修改哪些样式？（字体、间距、颜色、动画、布局等）
-- 是否要调整窗口尺寸？
-- 是否需要支持主题切换？
+- 设计文档: [docs/superpowers/specs/2026-05-24-terminal-pulse-style-design.md](../superpowers/specs/2026-05-24-terminal-pulse-style-design.md)
+- 实现计划: [docs/superpowers/plans/2026-05-24-terminal-pulse-style-plan.md](../superpowers/plans/2026-05-24-terminal-pulse-style-plan.md)
+- 提交: 10 commits (709dcc6 ~ ec7c29e)
+
+## 相关文件
+
+- [apps/desktop/src/assets/main.css](../../apps/desktop/src/assets/main.css) — 全局字体 + 透明背景
+- [apps/desktop/src/App.vue](../../apps/desktop/src/App.vue) — 透明背景
+- [apps/desktop/src/components/FloatingPanel.vue](../../apps/desktop/src/components/FloatingPanel.vue) — CLI header + 自适应高度
+- [apps/desktop/src/components/SessionCard.vue](../../apps/desktop/src/components/SessionCard.vue) — 终端行式卡片
+- [apps/desktop/src/components/ExpandedDetail.vue](../../apps/desktop/src/components/ExpandedDetail.vue) — 终端风格详情
+- [apps/desktop/src/types/agent.ts](../../apps/desktop/src/types/agent.ts) — 单字状态标签
+- [apps/desktop/src-tauri/tauri.conf.json](../../apps/desktop/src-tauri/tauri.conf.json) — 透明窗口配置
+- [apps/desktop/src-tauri/capabilities/default.json](../../apps/desktop/src-tauri/capabilities/default.json) — 窗口权限
