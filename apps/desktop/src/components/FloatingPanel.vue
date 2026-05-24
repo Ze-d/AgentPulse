@@ -29,7 +29,7 @@ function handleOpenTranscript(path: string) {
 </script>
 
 <template>
-  <div class="floating-panel" data-tauri-drag-region>
+  <div class="floating-panel">
     <div class="panel-header" data-tauri-drag-region>
       <h1 class="text-sm font-bold" style="color: var(--color-mauve)">
         AgentPulse
@@ -49,6 +49,7 @@ function handleOpenTranscript(path: string) {
     <div
       v-if="store.sessions.length === 0 && !store.error"
       class="empty-state"
+      data-tauri-drag-region
     >
       <p style="color: var(--color-overlay0); font-size: 12px">
         No active sessions
@@ -100,6 +101,10 @@ function handleOpenTranscript(path: string) {
   cursor: grab;
 }
 
+.panel-header > * {
+  pointer-events: none;
+}
+
 .panel-header:active {
   cursor: grabbing;
 }
@@ -134,5 +139,10 @@ function handleOpenTranscript(path: string) {
   align-items: center;
   justify-content: center;
   flex: 1;
+  cursor: grab;
+}
+
+.empty-state > * {
+  pointer-events: none;
 }
 </style>

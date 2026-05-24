@@ -3,7 +3,6 @@ pub mod db;
 pub mod event_server;
 pub mod state_machine;
 pub mod tray;
-pub mod window;
 
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
@@ -103,7 +102,6 @@ pub fn run() {
             commands::get_session_events,
         ])
         .setup(|app| {
-            window::create_floating_window(app);
             tray::setup_tray(app)?;
             Ok(())
         })
