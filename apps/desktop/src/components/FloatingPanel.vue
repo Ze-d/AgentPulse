@@ -2,6 +2,7 @@
 import { watch, onMounted, onUnmounted } from "vue";
 import { useSessionStore } from "../stores/sessionStore";
 import { getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
+import { convertFileSrc } from "@tauri-apps/api/core";
 import SessionCard from "./SessionCard.vue";
 import ExpandedDetail from "./ExpandedDetail.vue";
 import { openUrl } from "@tauri-apps/plugin-opener";
@@ -20,12 +21,20 @@ function handleCardClick(sessionId: string) {
   store.toggleExpand(sessionId);
 }
 
-function handleOpenDir(cwd: string) {
-  openUrl(`file:///${cwd}`);
+async function handleOpenDir(cwd: string) {
+  try {
+    await openUrl(convertFileSrc(cwd));
+  } catch (e) {
+    console.error("[AgentPulse] Failed to open dir:", e);
+  }
 }
 
-function handleOpenTranscript(path: string) {
-  openUrl(`file:///${path}`);
+async function handleOpenTranscript(path: string) {
+  try {
+    await openUrl(convertFileSrc(path));
+  } catch (e) {
+    console.error("[AgentPulse] Failed to open transcript:", e);
+  }
 }
 
 async function adjustWindowSize() {
