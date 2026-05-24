@@ -1,8 +1,10 @@
 [package]
 name = "desktop"
 version = "0.1.0"
-description = "A Tauri App"
-authors = ["you"]
+description = "Local AI Coding Agent monitor — desktop overlay for Claude Code session status"
+authors = ["Kal_zed"]
+repository = "https://github.com/Kal-zed/AgentPulse"
+license = "MIT"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
