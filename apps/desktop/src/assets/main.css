@@ -13,11 +13,15 @@
   --color-blue: #89b4fa;
   --color-mauve: #cba6f7;
   --color-peach: #fab387;
+  --font-mono: "Cascadia Code", "JetBrains Mono", "Fira Code", "Consolas", monospace;
 }
 
+html,
 body {
   margin: 0;
   padding: 0;
   background: transparent;
   overflow: hidden;
+  font-family: var(--font-mono);
+  color: var(--color-text);
 }
