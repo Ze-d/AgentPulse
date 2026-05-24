@@ -26,10 +26,7 @@ jobs:
 
       - name: Install frontend dependencies
         working-directory: apps/desktop
-        run: |
-          rm -rf node_modules package-lock.json
-          npm install
-        shell: bash
+        run: npm install --include=optional
 
       - name: TypeScript type check
         working-directory: apps/desktop
