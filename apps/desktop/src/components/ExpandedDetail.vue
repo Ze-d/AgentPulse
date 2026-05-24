@@ -102,6 +102,12 @@ const duration = computed(() =>
   color: var(--color-overlay0);
 }
 
+.truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .message-block {
   margin-top: 8px;
   padding: 6px 8px;
