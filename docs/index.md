@@ -1,6 +1,18 @@
-# Documentation
+# Documentation Index
 
-- [Architecture Overview](architecture/overview.md)
-- [Testing Strategy](testing/testing-strategy.md)
-- [TDD Guide](testing/tdd-guide.md)
-- [Coding Rules](ai/coding-rules.md)
+- [架构概述](architecture/overview.md)
+- [组件树](architecture/component-tree.md)
+- [模块边界](architecture/module-boundaries.md)
+- [测试策略](testing/testing-strategy.md)
+- [TDD 指南](testing/tdd-guide.md)
+- [测试数据](testing/test-data.md)
+- [代码规范](ai/coding-rules.md)
+- [Context Map](ai/context-map.md)
+- [审查清单](ai/review-checklist.md)
+- [本地开发指南](../local-development-guide.md) (docs/ 同级)
+- [设计文档 — AgentPulse v0.1](superpowers/specs/2026-05-22-agentpulse-v01-design.md)
+- [设计文档 — Connect Real CC](superpowers/specs/2026-05-23-connect-real-claude-code-design.md)
+- [实现计划 — v0.1](superpowers/plans/2026-05-22-agentpulse-v01-plan.md)
+- [实现计划 — Connect Real CC](superpowers/plans/2026-05-23-connect-real-claude-code-plan.md)
+- [接入真实 Claude Code 事件](todos/connect-real-claude-code.md)
+- [Bug 修复记录](fixlog/)

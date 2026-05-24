@@ -2,9 +2,56 @@
 
 ## Tech Stack
 
-- Desktop: Tauri 2
-- Frontend: Vue 3 + TypeScript
-- Backend: Rust
-- Database: SQLite
+| 层 | 技术 | 用途 |
+|---|------|------|
+| Desktop Shell | Tauri 2 | 窗口管理、系统托盘、Rust 运行时 |
+| Frontend | Vue 3 + TypeScript + Tailwind CSS | 悬浮窗 UI |
+| State | Pinia | 前端状态管理，2s 轮询 |
+| Backend | Rust (agentpulse_lib) | HTTP 服务器、状态机、SQLite、进程监控 |
+| HTTP Server | tiny_http 0.12 | 内嵌 HTTP，端口 17878 |
+| Database | SQLite (rusqlite 0.31, bundled) | 事件 + session 持久化 |
+| Adapter | Python 3 | Claude Code hook stdin → HTTP 转发 |
+| IPC | Tauri invoke/events | Rust ↔ Vue 数据流 |
+
+## Architecture: 4 Layers
+
+```
+┌─────────────────────────────────────────┐
+│  Floating Window (Vue 3 + Tailwind)     │  ← Tauri invoke (IPC)
+├─────────────────────────────────────────┤
+│  Monitor Core (Rust)                    │  ← HTTP :17878 + SQLite + state machine
+├─────────────────────────────────────────┤
+│  Hooks In (Python)  │  File In  │ ... │  ← v1: Hooks only
+├─────────────────────────────────────────┤
+│  Agents (Claude Code CLI)               │
+└─────────────────────────────────────────┘
+```
 
 ## Key Design Decisions
+
+1. **内存数据库用于开发** — `Database::new_in_memory()` 简化测试，每次启动干净状态。生产环境应改为文件持久化
+2. **HTTP 作为适配器协议** — Python hook 脚本通过 HTTP POST 与 Rust 后端通信，解耦语言和进程边界
+3. **共享 Arc<Mutex<Database>>** — 事件服务器线程和 Tauri command handler 共享同一数据库实例
+4. **前端轮询而非 WebSocket** — 简单可靠，2s 间隔对单用户本地场景足够
+5. **无边框置顶窗口** — `decorations: false` + `alwaysOnTop: true`，最小尺寸 280x120
+6. **Python 适配器保持轻量** — 无第三方依赖，仅使用标准库 (json, urllib, argparse, logging)
+
+## Data Flow
+
+```
+Claude Code hook 触发
+  → settings.json 中的 hook 配置
+    → 执行 monitor_hook.py (stdin 传入 hook JSON)
+      → POST http://127.0.0.1:17878/api/events
+        → normalize_claude_code_event() 提取 + 映射
+          → StateMachine::transition() 验证状态流转
+            → db.upsert_session() + db.insert_event()
+              → Tauri get_sessions command → Vue store → UI
+```
+
+## Port Allocation
+
+| 端口 | 用途 |
+|------|------|
+| 1420 | Vite dev server (前端热更新) |
+| 17878 | AgentPulse HTTP event server |
