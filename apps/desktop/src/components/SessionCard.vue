@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed } from "vue";
 import type { AgentSession } from "../types/agent";
 import { STATUS_COLORS, STATUS_LABELS, formatDuration } from "../types/agent";
 
@@ -10,11 +11,10 @@ const emit = defineEmits<{
   click: [sessionId: string];
 }>();
 
-const statusColor = STATUS_COLORS[props.session.status];
-const statusLabel = STATUS_LABELS[props.session.status];
-const duration = formatDuration(
-  props.session.startedAt,
-  props.session.completedAt
+const statusColor = computed(() => STATUS_COLORS[props.session.status]);
+const statusLabel = computed(() => STATUS_LABELS[props.session.status]);
+const duration = computed(() =>
+  formatDuration(props.session.startedAt, props.session.completedAt)
 );
 </script>
 
@@ -32,7 +32,6 @@ const duration = formatDuration(
       <span class="status" :style="{ color: statusColor }">{{ statusLabel }}</span>
     </div>
     <div v-if="session.lastToolName" class="card-row secondary">
-      <span></span>
       <span class="tool">{{ session.lastToolName }}</span>
     </div>
   </div>
@@ -60,6 +59,8 @@ const duration = formatDuration(
 }
 
 .card-row.secondary {
+  display: grid;
+  grid-template-columns: 1fr auto;
   font-size: 11px;
   margin-top: 1px;
 }
@@ -83,6 +84,5 @@ const duration = formatDuration(
 
 .tool {
   color: var(--color-overlay0);
-  margin-left: auto;
 }
 </style>
