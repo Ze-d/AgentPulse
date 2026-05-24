@@ -47,7 +47,7 @@ jobs:
 
       - name: Install frontend dependencies
         working-directory: apps/desktop
-        run: npm ci
+        run: npm install
 
       - name: Build and publish
         uses: tauri-apps/tauri-action@v0
