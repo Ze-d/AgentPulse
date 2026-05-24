@@ -47,7 +47,37 @@ jobs:
 
       - name: Install frontend dependencies
         working-directory: apps/desktop
-        run: npm install --include=optional
+        run: |
+          rm -rf node_modules
+          npm install
+
+      - name: Force install native bindings (Windows)
+        if: runner.os == 'Windows'
+        working-directory: apps/desktop
+        shell: pwsh
+        run: |
+          npm install -D @tailwindcss/oxide-win32-x64-msvc@4.3.0 @rollup/rollup-win32-x64-msvc@4.60.4 lightningcss-win32-x64-msvc@1.32.0
+          npm ls @tailwindcss/oxide-win32-x64-msvc
+          npm ls @rollup/rollup-win32-x64-msvc
+          npm ls lightningcss-win32-x64-msvc
+
+      - name: Force install native bindings (Linux)
+        if: runner.os == 'Linux'
+        working-directory: apps/desktop
+        run: |
+          npm install -D @tailwindcss/oxide-linux-x64-gnu@4.3.0 @rollup/rollup-linux-x64-gnu@4.60.4 lightningcss-linux-x64-gnu@1.32.0
+          npm ls @tailwindcss/oxide-linux-x64-gnu
+          npm ls @rollup/rollup-linux-x64-gnu
+          npm ls lightningcss-linux-x64-gnu
+
+      - name: Force install native bindings (macOS)
+        if: runner.os == 'macOS'
+        working-directory: apps/desktop
+        run: |
+          npm install -D @tailwindcss/oxide-darwin-arm64@4.3.0 @rollup/rollup-darwin-arm64@4.60.4 lightningcss-darwin-arm64@1.32.0
+          npm ls @tailwindcss/oxide-darwin-arm64
+          npm ls @rollup/rollup-darwin-arm64
+          npm ls lightningcss-darwin-arm64
 
       - name: Build and publish
         uses: tauri-apps/tauri-action@v0
