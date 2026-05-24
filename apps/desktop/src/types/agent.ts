@@ -56,7 +56,7 @@ export const STATUS_LABELS: Record<AgentStatus, string> = {
   waiting_permission: "permission",
   completed: "done",
   failed: "failed",
-  unknown: "???",
+  unknown: "?",
 };
 
 export const STATUS_COLORS: Record<AgentStatus, string> = {
