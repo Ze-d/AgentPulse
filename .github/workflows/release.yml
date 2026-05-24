@@ -48,7 +48,6 @@ jobs:
       - name: Install frontend dependencies
         working-directory: apps/desktop
         run: |
-          rm -rf node_modules
           npm install
 
       - name: Force install native bindings (Windows)
