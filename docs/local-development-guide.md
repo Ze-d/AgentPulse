@@ -42,7 +42,6 @@ AgentPulse/
 │   │   │   ├── state_machine.rs   # 状态机
 │   │   │   ├── event_server.rs    # HTTP 事件服务器 :17878
 │   │   │   ├── commands.rs        # Tauri 命令（前后端桥接）
-│   │   │   ├── window.rs          # 悬浮窗创建
 │   │   │   ├── tray.rs            # 系统托盘
 │   │   │   └── main.rs            # 入口点
 │   │   └── tests/                 # Rust 集成测试

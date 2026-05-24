@@ -12,9 +12,12 @@
   "app": {
     "windows": [
       {
+        "label": "main",
         "title": "AgentPulse",
         "width": 320,
         "height": 200,
+        "minWidth": 280,
+        "minHeight": 120,
         "resizable": true,
         "decorations": false,
         "alwaysOnTop": true,
