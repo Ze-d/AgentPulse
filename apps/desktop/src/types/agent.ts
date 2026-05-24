@@ -49,14 +49,14 @@ export interface AgentSession {
 }
 
 export const STATUS_LABELS: Record<AgentStatus, string> = {
-  starting: "Starting",
-  running: "Running",
-  tool_running: "Tool Running",
-  waiting_input: "Waiting Input",
-  waiting_permission: "Waiting Permission",
-  completed: "Completed",
-  failed: "Failed",
-  unknown: "Unknown",
+  starting: "starting",
+  running: "running",
+  tool_running: "tool",
+  waiting_input: "waiting",
+  waiting_permission: "permission",
+  completed: "done",
+  failed: "failed",
+  unknown: "???",
 };
 
 export const STATUS_COLORS: Record<AgentStatus, string> = {
