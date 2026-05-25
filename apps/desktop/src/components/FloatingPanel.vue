@@ -37,6 +37,14 @@ async function handleOpenTranscript(path: string) {
   }
 }
 
+async function handleClose() {
+  try {
+    await getCurrentWindow().close();
+  } catch {
+    // window API may not be available in browser dev mode
+  }
+}
+
 async function adjustWindowSize() {
   const headerHeight = 28;
   const cardHeight = 34;
@@ -71,6 +79,7 @@ watch(
         <span class="dollar"> $</span>
       </h1>
       <span class="count">[{{ store.activeSessions.length }} active]</span>
+      <button class="close-btn" @click="handleClose" title="Close">x</button>
     </div>
 
     <div
@@ -155,6 +164,22 @@ watch(
 .count {
   font-size: 11px;
   color: var(--color-overlay0);
+}
+
+.close-btn {
+  background: none;
+  border: none;
+  color: var(--color-overlay0);
+  font-size: 14px;
+  font-family: inherit;
+  cursor: pointer;
+  padding: 0 2px;
+  line-height: 1;
+  pointer-events: auto;
+}
+
+.close-btn:hover {
+  color: var(--color-red);
 }
 
 .session-list {
