@@ -8,6 +8,7 @@ pub mod tray;
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
 use tauri::Manager;
+use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 use db::Database;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -82,6 +83,27 @@ pub struct AgentSession {
     pub needs_attention: bool,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+struct ClosePreference {
+    action: String,
+}
+
+fn read_close_preference(path: &std::path::PathBuf) -> Option<String> {
+    std::fs::read_to_string(path)
+        .ok()
+        .and_then(|s| serde_json::from_str::<ClosePreference>(&s).ok())
+        .map(|p| p.action)
+}
+
+fn write_close_preference(path: &std::path::PathBuf, action: &str) {
+    let pref = ClosePreference {
+        action: action.to_string(),
+    };
+    if let Ok(json) = serde_json::to_string(&pref) {
+        let _ = std::fs::write(path, json);
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     env_logger::init();
@@ -97,6 +119,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_dialog::init())
         .manage(commands::AppState { db: db.clone() })
         .invoke_handler(tauri::generate_handler![
             commands::get_sessions,
@@ -108,6 +131,75 @@ pub fn run() {
         ])
         .setup(|app| {
             tray::setup_tray(app)?;
+
+            // Intercept window close: minimize to tray with remembered preference
+            let window = app.get_webview_window("main").unwrap();
+            let app_handle = app.handle().clone();
+            window.on_window_event(move |event| {
+                if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                    api.prevent_close();
+
+                    let pref_path = app_handle
+                        .path()
+                        .app_data_dir()
+                        .unwrap()
+                        .join("close_action.json");
+
+                    let action = read_close_preference(&pref_path);
+
+                    match action.as_deref() {
+                        Some("tray") => {
+                            if let Some(w) = app_handle.get_webview_window("main") {
+                                let _ = w.hide();
+                            }
+                        }
+                        Some("quit") => {
+                            app_handle.exit(0);
+                        }
+                        _ => {
+                            let minimize = app_handle
+                                .dialog()
+                                .message("Minimize to system tray?")
+                                .title("AgentPulse")
+                                .kind(MessageDialogKind::Info)
+                                .buttons(MessageDialogButtons::YesNo)
+                                .blocking_show();
+
+                            if minimize {
+                                if let Some(w) = app_handle.get_webview_window("main") {
+                                    let _ = w.hide();
+                                }
+
+                                let remember = app_handle
+                                    .dialog()
+                                    .message("Always minimize to tray when closing?")
+                                    .title("AgentPulse")
+                                    .kind(MessageDialogKind::Info)
+                                    .buttons(MessageDialogButtons::YesNo)
+                                    .blocking_show();
+
+                                if remember {
+                                    write_close_preference(&pref_path, "tray");
+                                }
+                            } else {
+                                let remember = app_handle
+                                    .dialog()
+                                    .message("Always quit when closing?")
+                                    .title("AgentPulse")
+                                    .kind(MessageDialogKind::Info)
+                                    .buttons(MessageDialogButtons::YesNo)
+                                    .blocking_show();
+
+                                if remember {
+                                    write_close_preference(&pref_path, "quit");
+                                }
+
+                                app_handle.exit(0);
+                            }
+                        }
+                    }
+                }
+            });
 
             // Ensure hooks are installed on every launch (idempotent).
             let app_handle = app.handle().clone();
