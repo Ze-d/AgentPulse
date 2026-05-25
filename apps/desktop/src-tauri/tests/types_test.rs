@@ -14,6 +14,7 @@ fn test_agent_event_serialization() {
         tool_name: None,
         transcript_path: None,
         created_at: 1700000000000,
+        process_pid: None,
     };
 
     let json = serde_json::to_string(&event).unwrap();
@@ -38,6 +39,7 @@ fn test_agent_session_defaults() {
         last_tool_name: None,
         transcript_path: None,
         needs_attention: false,
+        pid: None,
     };
     assert_eq!(session.status, AgentStatus::Unknown);
     assert!(!session.needs_attention);

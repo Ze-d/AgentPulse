@@ -21,6 +21,7 @@ fn test_create_and_get_session() {
         last_tool_name: None,
         transcript_path: None,
         needs_attention: false,
+        pid: None,
     };
 
     db.upsert_session(&session).unwrap();
@@ -46,6 +47,7 @@ fn test_insert_event() {
         last_tool_name: None,
         transcript_path: None,
         needs_attention: false,
+        pid: None,
     };
     db.upsert_session(&session).unwrap();
 
@@ -61,6 +63,7 @@ fn test_insert_event() {
         tool_name: None,
         transcript_path: None,
         created_at: 1700000000000,
+        process_pid: None,
     };
 
     db.insert_event(&event).unwrap();
@@ -85,6 +88,7 @@ fn test_list_active_sessions() {
         last_tool_name: None,
         transcript_path: None,
         needs_attention: false,
+        pid: None,
     };
     let completed = AgentSession {
         session_id: "sess-B".into(),
@@ -99,12 +103,14 @@ fn test_list_active_sessions() {
         last_tool_name: None,
         transcript_path: None,
         needs_attention: false,
+        pid: None,
     };
 
     db.upsert_session(&running).unwrap();
     db.upsert_session(&completed).unwrap();
 
-    let active = db.list_active_sessions().unwrap();
-    assert_eq!(active.len(), 1);
-    assert_eq!(active[0].session_id, "sess-A");
+    let all = db.list_all_sessions().unwrap();
+    assert_eq!(all.len(), 2);
+    assert!(all.iter().any(|s| s.session_id == "sess-A"));
+    assert!(all.iter().any(|s| s.session_id == "sess-B"));
 }

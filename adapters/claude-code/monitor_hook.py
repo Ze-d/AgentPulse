@@ -25,6 +25,7 @@ Environment variables:
   AGENTPULSE_LOG_LEVEL   - Logging level: DEBUG, INFO, WARNING, ERROR (default: INFO)
 """
 import argparse
+import ctypes
 import json
 import logging
 import os
@@ -48,7 +49,94 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+# Shell process names that sit between Claude Code and our hook script.
+_SHELL_NAMES = frozenset({"cmd.exe", "powershell.exe", "pwsh.exe", "sh.exe", "bash.exe", "conhost.exe"})
+
+
 def read_stdin() -> dict | None:
+    """Read hook JSON from stdin. Returns None if empty, exits on parse error."""
+    raw_input = sys.stdin.read().strip()
+    if not raw_input:
+        logger.info("No stdin data, skipping")
+        return None
+    try:
+        return json.loads(raw_input)
+    except json.JSONDecodeError as e:
+        logger.error("Failed to parse stdin as JSON: %s", e)
+        sys.exit(1)
+
+
+def _walk_process_tree_to_cc() -> int:
+    """Walk up the parent chain to find the Claude Code (node.exe) process.
+
+    Claude Code spawns hook commands through a shell (cmd.exe / powershell.exe),
+    so ``os.getppid()`` returns the shell PID which exits instantly. We walk
+    upward until we find a non-shell process, which should be the CC node process.
+    Falls back to ``os.getppid()`` on error or non-Windows platforms.
+    """
+    if sys.platform != "win32":
+        return os.getppid()
+
+    try:
+        pid_to_parent, pid_to_name = _snapshot_processes()
+
+        # Walk up from the current process, skipping known shell wrappers.
+        cur = os.getpid()
+        for _ in range(5):  # safety limit
+            parent = pid_to_parent.get(cur)
+            if parent is None:
+                break
+            name = pid_to_name.get(parent, "").lower()
+            if name not in _SHELL_NAMES:
+                return parent
+            cur = parent
+
+        # Fallback: return the last parent we found, or PPID.
+        return os.getppid()
+    except Exception:
+        return os.getppid()
+
+
+def _snapshot_processes() -> tuple[dict[int, int], dict[int, str]]:
+    """Take a process snapshot and return (pid→parent_pid, pid→name)."""
+    TH32CS_SNAPPROCESS = 0x00000002
+    INVALID_HANDLE_VALUE = ctypes.c_void_p(-1).value
+
+    class PROCESSENTRY32(ctypes.Structure):
+        _fields_ = [
+            ("dwSize", ctypes.c_ulong),
+            ("cntUsage", ctypes.c_ulong),
+            ("th32ProcessID", ctypes.c_ulong),
+            ("th32DefaultHeapID", ctypes.POINTER(ctypes.c_ulong)),
+            ("th32ModuleID", ctypes.c_ulong),
+            ("cntThreads", ctypes.c_ulong),
+            ("th32ParentProcessID", ctypes.c_ulong),
+            ("pcPriClassBase", ctypes.c_long),
+            ("dwFlags", ctypes.c_ulong),
+            ("szExeFile", ctypes.c_char * 260),
+        ]
+
+    kernel32 = ctypes.windll.kernel32
+    snapshot = kernel32.CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0)
+    if snapshot == INVALID_HANDLE_VALUE:
+        return {}, {}
+
+    pid_to_parent: dict[int, int] = {}
+    pid_to_name: dict[int, str] = {}
+
+    entry = PROCESSENTRY32()
+    entry.dwSize = ctypes.sizeof(PROCESSENTRY32)
+
+    if kernel32.Process32First(snapshot, ctypes.byref(entry)):
+        while True:
+            pid = entry.th32ProcessID
+            pid_to_parent[pid] = entry.th32ParentProcessID
+            pid_to_name[pid] = entry.szExeFile.decode("utf-8", errors="replace")
+            if not kernel32.Process32Next(snapshot, ctypes.byref(entry)):
+                break
+
+    kernel32.CloseHandle(snapshot)
+    return pid_to_parent, pid_to_name
     """Read hook JSON from stdin. Returns None if empty, exits on parse error."""
     raw_input = sys.stdin.read().strip()
     if not raw_input:
@@ -118,6 +206,11 @@ def main():
     hook_data = read_stdin()
     if hook_data is None:
         sys.exit(0)
+
+    # Walk up the process tree to find the Claude Code (node.exe) PID.
+    # os.getppid() would give us the shell that spawned us — that exits
+    # instantly, so we walk past shell wrappers to the real CC process.
+    hook_data["process_pid"] = _walk_process_tree_to_cc()
 
     if args.test:
         print(json.dumps(hook_data, indent=2))

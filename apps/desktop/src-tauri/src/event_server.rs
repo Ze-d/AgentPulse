@@ -30,6 +30,7 @@ pub fn normalize_claude_code_event(raw: &serde_json::Value) -> AgentEvent {
 
     let tool_name = raw["tool_name"].as_str().map(|s| s.to_string());
     let notification_type = raw["notification_type"].as_str().unwrap_or("");
+    let process_pid = raw["process_pid"].as_u64().map(|v| v as u32);
 
     // Derive project name from the last path component of cwd.
     let project_name = if cwd.is_empty() {
@@ -68,6 +69,7 @@ pub fn normalize_claude_code_event(raw: &serde_json::Value) -> AgentEvent {
         tool_name,
         transcript_path,
         created_at: Utc::now().timestamp_millis(),
+        process_pid,
     }
 }
 
@@ -126,6 +128,10 @@ impl EventServer {
                     last_tool_name: event.tool_name.clone().or(old.last_tool_name),
                     transcript_path: event.transcript_path.clone().or(old.transcript_path),
                     needs_attention: StateMachine::needs_attention(&new_status),
+                    // Prefer the new PID; fall back to the old one.
+                    // If old.pid was None but a new PID arrives (e.g. from a
+                    // later event), backfill it so process checker can work.
+                    pid: event.process_pid.or(old.pid),
                 }
             }
             None => {
@@ -143,6 +149,7 @@ impl EventServer {
                     last_tool_name: event.tool_name.clone(),
                     transcript_path: event.transcript_path.clone(),
                     needs_attention: StateMachine::needs_attention(&event.status),
+                    pid: event.process_pid,
                 }
             }
         };
@@ -216,7 +223,7 @@ impl EventServer {
                     }
                     ("GET", "/api/sessions") => {
                         let db = event_server.db.lock().unwrap();
-                        match db.list_active_sessions() {
+                        match db.list_all_sessions() {
                             Ok(sessions) => json_response(200, &serde_json::json!(sessions)),
                             Err(e) => json_response(
                                 500,

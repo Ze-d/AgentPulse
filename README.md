@@ -5,7 +5,9 @@
 ## 功能
 
 - **实时监控** — 通过 Claude Code hooks 捕获 session 生命周期事件（SessionStart、PreToolUse、PostToolUse、Notification、Stop 等）
-- **桌面悬浮窗** — Tauri 2 无边框置顶窗口，显示活跃 session 卡片（项目名、状态、工具、持续时间）
+- **桌面悬浮窗** — Tauri 2 无边框置顶窗口，显示 session 卡片（项目名、状态、工具、持续时间），panel 卡片数与开启的 CC 终端数一一对应
+- **会话持久展示** — 任务完成后卡片保留显示 `[done]` 状态，关闭 CC 终端后约 5 秒自动消失。通过 Windows 进程树遍历获取 CC 真实 PID，后台线程检测进程存活状态自动清理
+- **系统托盘** — 关闭窗口时最小化到托盘，首次关闭询问偏好（托盘/退出），可记住选择。右键托盘菜单可随时退出
 - **状态机** — 规范化 agent 状态流转（Starting → Running → ToolRunning → WaitingInput → Completed）
 - **本地优先** — SQLite 持久化，不上传源码或对话记录
 
@@ -59,12 +61,13 @@ npx vue-tsc --noEmit
 ```
 Claude Code session 事件
   → ~/.claude/settings.json (hooks 配置)
-    → monitor_hook.py (stdin 适配器)
+    → monitor_hook.py (stdin 适配器 + 进程树遍历获取 CC PID)
       → POST /api/events (127.0.0.1:17878)
         → event_server.rs (规范化 + 状态机)
           → SQLite (持久化)
             → Tauri commands (IPC)
-              → Vue 3 前端 (轮询展示)
+              → Vue 3 前端 (2s 轮询展示全部 session)
+        → process_checker.rs (5s 轮询 PID 存活，清理死进程 session)
 ```
 
 | 层 | 技术 |
@@ -90,7 +93,9 @@ AgentPulse/
 │   │   │   ├── db.rs              # SQLite CRUD
 │   │   │   ├── state_machine.rs   # 状态转换 + needs_attention
 │   │   │   ├── event_server.rs    # HTTP 服务器 :17878
+│   │   │   ├── process_checker.rs # 后台进程存活检测
 │   │   │   ├── commands.rs        # Tauri IPC 命令
+│   │   │   ├── hooks.rs           # Hook 配置管理
 │   │   │   ├── tray.rs            # 系统托盘
 │   │   │   └── main.rs            # 二进制入口
 │   │   └── tests/                 # Rust 集成测试

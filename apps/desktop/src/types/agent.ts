@@ -46,6 +46,7 @@ export interface AgentSession {
   lastToolName?: string;
   transcriptPath?: string;
   needsAttention: boolean;
+  pid?: number;
 }
 
 export const STATUS_LABELS: Record<AgentStatus, string> = {

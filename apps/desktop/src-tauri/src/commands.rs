@@ -13,7 +13,7 @@ pub struct AppState {
 #[tauri::command]
 pub fn get_sessions(state: State<AppState>) -> Result<Vec<AgentSession>, String> {
     let db = state.db.lock().map_err(|e| e.to_string())?;
-    db.list_active_sessions().map_err(|e| e.to_string())
+    db.list_all_sessions().map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -68,4 +68,12 @@ pub fn uninstall_hooks_cmd(
         .resolve(".claude/settings.json", tauri::path::BaseDirectory::Home)
         .map_err(|e| e.to_string())?;
     hooks::unregister_hooks(&settings_path)
+}
+
+#[tauri::command]
+pub fn hide_main_window(app_handle: tauri::AppHandle) -> Result<(), String> {
+    let window = app_handle
+        .get_webview_window("main")
+        .ok_or_else(|| "main window not found".to_string())?;
+    window.hide().map_err(|e| e.to_string())
 }

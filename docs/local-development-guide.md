@@ -37,18 +37,20 @@ AgentPulse/
 │   │   └── assets/                # CSS (Tailwind + Catppuccin)
 │   ├── src-tauri/                 # Rust 后端
 │   │   ├── src/
-│   │   │   ├── lib.rs             # 共享类型
+│   │   │   ├── lib.rs             # 共享类型 + run() 入口
 │   │   │   ├── db.rs              # SQLite 数据库
 │   │   │   ├── state_machine.rs   # 状态机
 │   │   │   ├── event_server.rs    # HTTP 事件服务器 :17878
+│   │   │   ├── process_checker.rs # 后台 PID 进程存活检测
 │   │   │   ├── commands.rs        # Tauri 命令（前后端桥接）
+│   │   │   ├── hooks.rs           # Hook 配置管理
 │   │   │   ├── tray.rs            # 系统托盘
 │   │   │   └── main.rs            # 入口点
 │   │   └── tests/                 # Rust 集成测试
 │   ├── package.json
 │   └── tauri.conf.json
 ├── adapters/claude-code/          # Claude Code hooks 适配器
-│   ├── monitor_hook.py            # 事件转发脚本
+│   ├── monitor_hook.py            # 事件转发 + 进程树遍历获取 CC PID
 │   └── install_hooks.py           # 一键安装/卸载 hooks
 └── tests/integration/             # E2E 测试
 ```
@@ -112,10 +114,10 @@ npm run tauri dev
 # 健康检查
 curl http://127.0.0.1:17878/api/health
 
-# 模拟 SessionStart
+# 模拟 SessionStart（手动测试需带上 process_pid，否则 session 不会被自动清理）
 curl -X POST http://127.0.0.1:17878/api/events `
   -H "Content-Type: application/json" `
-  -d '{"session_id":"test-001","cwd":"D:/projects/test-project","hook_event_name":"SessionStart","transcript_path":"D:/tmp/transcript.json"}'
+  -d '{"session_id":"test-001","cwd":"D:/projects/test-project","hook_event_name":"SessionStart","process_pid":4,"transcript_path":"D:/tmp/transcript.json"}'
 
 # 模拟 PreToolUse
 curl -X POST http://127.0.0.1:17878/api/events `
@@ -137,11 +139,15 @@ curl -X POST http://127.0.0.1:17878/api/events `
   -H "Content-Type: application/json" `
   -d '{"session_id":"test-001","cwd":"D:/projects/test-project","hook_event_name":"Stop","last_assistant_message":"任务已完成"}'
 
-# 查看活跃 sessions
+# 查看全部 sessions（包括已完成的）
 curl http://127.0.0.1:17878/api/sessions
 ```
 
-浮窗应该实时显示 session 状态变化。
+浮窗应该实时显示 session 状态变化。已完成的 session（status=completed）会保留在列表中，
+对应卡片在 CC 终端关闭后约 5 秒自动消失。
+
+> **模拟测试提示：** 手动 curl 发送事件时需带上 `"process_pid": <真实PID>` 否则 session 无 PID，
+> 不会被自动清理。可以用 `--test` 模式查看 monitor_hook.py 默认注入的 PID。
 
 ### 2.4 测试 Python Hook 适配器
 
@@ -161,7 +167,7 @@ cd apps/desktop/src-tauri
 cargo test
 ```
 
-预期：25 tests passed（7 db 单元 + 3 db 集成 + 5 event_server + 7 state_machine + 3 types）
+预期：36 tests passed（8 db 单元 + 3 db 集成 + 5 event_server + 7 state_machine + 3 types + 10 hooks）
 
 ### 3.2 前端类型检查
 
