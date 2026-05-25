@@ -88,14 +88,17 @@ struct ClosePreference {
     action: String,
 }
 
-fn read_close_preference(path: &std::path::PathBuf) -> Option<String> {
+fn read_close_preference(path: &std::path::Path) -> Option<String> {
     std::fs::read_to_string(path)
         .ok()
         .and_then(|s| serde_json::from_str::<ClosePreference>(&s).ok())
         .map(|p| p.action)
 }
 
-fn write_close_preference(path: &std::path::PathBuf, action: &str) {
+fn write_close_preference(path: &std::path::Path, action: &str) {
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
     let pref = ClosePreference {
         action: action.to_string(),
     };
@@ -139,13 +142,17 @@ pub fn run() {
                 if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                     api.prevent_close();
 
-                    let pref_path = app_handle
-                        .path()
-                        .app_data_dir()
-                        .unwrap()
-                        .join("close_action.json");
+                    let pref_path = match app_handle.path().app_data_dir() {
+                        Ok(dir) => Some(dir.join("close_action.json")),
+                        Err(e) => {
+                            log::error!("app_data_dir: {e}");
+                            None
+                        }
+                    };
 
-                    let action = read_close_preference(&pref_path);
+                    let action = pref_path
+                        .as_ref()
+                        .and_then(|p| read_close_preference(p));
 
                     match action.as_deref() {
                         Some("tray") => {
@@ -179,7 +186,9 @@ pub fn run() {
                                     .blocking_show();
 
                                 if remember {
-                                    write_close_preference(&pref_path, "tray");
+                                    if let Some(ref p) = pref_path {
+                                        write_close_preference(p, "tray");
+                                    }
                                 }
                             } else {
                                 let remember = app_handle
@@ -191,7 +200,9 @@ pub fn run() {
                                     .blocking_show();
 
                                 if remember {
-                                    write_close_preference(&pref_path, "quit");
+                                    if let Some(ref p) = pref_path {
+                                        write_close_preference(p, "quit");
+                                    }
                                 }
 
                                 app_handle.exit(0);
