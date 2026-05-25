@@ -1,11 +1,13 @@
 pub mod commands;
 pub mod db;
 pub mod event_server;
+pub mod hooks;
 pub mod state_machine;
 pub mod tray;
 
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
+use tauri::Manager;
 use db::Database;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -100,9 +102,55 @@ pub fn run() {
             commands::get_sessions,
             commands::get_session_detail,
             commands::get_session_events,
+            commands::get_hook_status_cmd,
+            commands::install_hooks_cmd,
+            commands::uninstall_hooks_cmd,
         ])
         .setup(|app| {
             tray::setup_tray(app)?;
+
+            // Ensure hooks are installed on every launch (idempotent).
+            let app_handle = app.handle().clone();
+            std::thread::spawn(move || {
+                let resource_dir = match app_handle.path().resource_dir() {
+                    Ok(d) => d,
+                    Err(e) => {
+                        log::error!("resource_dir: {e}");
+                        return;
+                    }
+                };
+                let app_data_dir = match app_handle.path().app_data_dir() {
+                    Ok(d) => d,
+                    Err(e) => {
+                        log::error!("app_data_dir: {e}");
+                        return;
+                    }
+                };
+                let settings_path = match app_handle
+                    .path()
+                    .resolve(".claude/settings.json", tauri::path::BaseDirectory::Home)
+                {
+                    Ok(p) => p,
+                    Err(e) => {
+                        log::error!("resolve settings path: {e}");
+                        return;
+                    }
+                };
+
+                match hooks::extract_monitor_script(&resource_dir, &app_data_dir) {
+                    Ok(monitor_path) => {
+                        match hooks::ensure_hooks_installed(
+                            &settings_path,
+                            &monitor_path.to_string_lossy(),
+                        ) {
+                            Ok(status) => log::info!("AgentPulse hooks: {status}"),
+                            Err(e) => log::error!("hooks: {e}"),
+                        }
+                    }
+                    Err(e) => log::error!("extract monitor script: {e}"),
+                }
+            });
+
             Ok(())
         })
         .run(tauri::generate_context!())

@@ -788,6 +788,7 @@ dependencies = [
  "tauri-build",
  "tauri-plugin-opener",
  "tauri-plugin-shell",
+ "tempfile",
  "tiny_http",
  "uuid",
 ]
