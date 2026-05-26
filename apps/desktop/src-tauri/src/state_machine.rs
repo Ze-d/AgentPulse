@@ -11,6 +11,12 @@ impl StateMachine {
         match (current.clone(), event_type) {
             // Session start
             (_, EventType::SessionStart) => AgentStatus::Starting,
+
+            // Terminal events take priority over the Starting catch-all
+            (_, EventType::Stop) => AgentStatus::Completed,
+            (_, EventType::Failure) => AgentStatus::Failed,
+
+            // Any other event from Starting transitions to Running
             (AgentStatus::Starting, _) => AgentStatus::Running,
 
             // Tool execution
@@ -22,15 +28,6 @@ impl StateMachine {
             // Permission & input
             (AgentStatus::Running, EventType::PermissionRequest) => AgentStatus::WaitingPermission,
             (_, EventType::Notification) => AgentStatus::WaitingInput,
-
-            // Terminal events
-            (AgentStatus::Running, EventType::Stop) => AgentStatus::Completed,
-            (AgentStatus::ToolRunning, EventType::Stop) => AgentStatus::Completed,
-            (AgentStatus::WaitingInput, EventType::Stop) => AgentStatus::Completed,
-            (AgentStatus::WaitingPermission, EventType::Stop) => AgentStatus::Completed,
-
-            // Failure
-            (_, EventType::Failure) => AgentStatus::Failed,
 
             // Default: keep current status
             _ => current,

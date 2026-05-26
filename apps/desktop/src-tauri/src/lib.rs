@@ -2,6 +2,7 @@ pub mod commands;
 pub mod db;
 pub mod event_server;
 pub mod hooks;
+pub mod process_checker;
 pub mod state_machine;
 pub mod tray;
 
@@ -64,6 +65,7 @@ pub struct AgentEvent {
     pub tool_name: Option<String>,
     pub transcript_path: Option<String>,
     pub created_at: i64,
+    pub process_pid: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -81,6 +83,7 @@ pub struct AgentSession {
     pub last_tool_name: Option<String>,
     pub transcript_path: Option<String>,
     pub needs_attention: bool,
+    pub pid: Option<u32>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -119,6 +122,8 @@ pub fn run() {
         let _ = event_server::EventServer::start_shared(db_for_server, "127.0.0.1:17878");
     });
 
+    process_checker::start(db.clone());
+
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_shell::init())
@@ -131,6 +136,7 @@ pub fn run() {
             commands::get_hook_status_cmd,
             commands::install_hooks_cmd,
             commands::uninstall_hooks_cmd,
+            commands::hide_main_window,
         ])
         .setup(|app| {
             tray::setup_tray(app)?;

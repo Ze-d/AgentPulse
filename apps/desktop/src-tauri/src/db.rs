@@ -31,7 +31,8 @@ impl Database {
                 last_message    TEXT,
                 last_tool_name  TEXT,
                 transcript_path TEXT,
-                needs_attention INTEGER NOT NULL DEFAULT 0
+                needs_attention INTEGER NOT NULL DEFAULT 0,
+                pid             INTEGER
             );
 
             CREATE TABLE IF NOT EXISTS events (
@@ -103,8 +104,8 @@ impl Database {
             "INSERT INTO sessions
                 (session_id, source, cwd, project_name, status, started_at,
                  updated_at, completed_at, last_message, last_tool_name,
-                 transcript_path, needs_attention)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
+                 transcript_path, needs_attention, pid)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
              ON CONFLICT(session_id) DO UPDATE SET
                 source          = ?2,
                 cwd             = ?3,
@@ -116,7 +117,8 @@ impl Database {
                 last_message    = ?9,
                 last_tool_name  = ?10,
                 transcript_path = ?11,
-                needs_attention = ?12",
+                needs_attention = ?12,
+                pid             = ?13",
             params![
                 session.session_id,
                 Self::serialize_agent_source(&session.source),
@@ -130,6 +132,7 @@ impl Database {
                 session.last_tool_name,
                 session.transcript_path,
                 session.needs_attention as i32,
+                session.pid,
             ],
         )?;
         Ok(())
@@ -139,7 +142,7 @@ impl Database {
         let mut stmt = self.conn.prepare(
             "SELECT session_id, source, cwd, project_name, status, started_at,
                     updated_at, completed_at, last_message, last_tool_name,
-                    transcript_path, needs_attention
+                    transcript_path, needs_attention, pid
              FROM sessions
              WHERE session_id = ?1",
         )?;
@@ -160,6 +163,7 @@ impl Database {
                 last_tool_name: row.get(9)?,
                 transcript_path: row.get(10)?,
                 needs_attention: row.get::<_, i32>(11)? != 0,
+                pid: row.get(12)?,
             })
         })?;
 
@@ -222,6 +226,7 @@ impl Database {
                 tool_name: row.get(8)?,
                 transcript_path: row.get(9)?,
                 created_at: row.get(10)?,
+                process_pid: None,
             })
         })?;
 
@@ -236,13 +241,12 @@ impl Database {
     // Session listing
     // ------------------------------------------------------------------
 
-    pub fn list_active_sessions(&self) -> Result<Vec<AgentSession>> {
+    pub fn list_all_sessions(&self) -> Result<Vec<AgentSession>> {
         let mut stmt = self.conn.prepare(
             "SELECT session_id, source, cwd, project_name, status, started_at,
                     updated_at, completed_at, last_message, last_tool_name,
-                    transcript_path, needs_attention
+                    transcript_path, needs_attention, pid
              FROM sessions
-             WHERE status NOT IN ('completed', 'failed')
              ORDER BY updated_at DESC",
         )?;
 
@@ -262,6 +266,56 @@ impl Database {
                 last_tool_name: row.get(9)?,
                 transcript_path: row.get(10)?,
                 needs_attention: row.get::<_, i32>(11)? != 0,
+                pid: row.get(12)?,
+            })
+        })?;
+
+        let mut sessions = Vec::new();
+        for row in rows {
+            sessions.push(row?);
+        }
+        Ok(sessions)
+    }
+
+    pub fn delete_session(&self, session_id: &str) -> Result<()> {
+        self.conn.execute(
+            "DELETE FROM events WHERE session_id = ?1",
+            params![session_id],
+        )?;
+        self.conn.execute(
+            "DELETE FROM sessions WHERE session_id = ?1",
+            params![session_id],
+        )?;
+        Ok(())
+    }
+
+    pub fn list_sessions_with_pid(&self) -> Result<Vec<AgentSession>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT session_id, source, cwd, project_name, status, started_at,
+                    updated_at, completed_at, last_message, last_tool_name,
+                    transcript_path, needs_attention, pid
+             FROM sessions
+             WHERE pid IS NOT NULL
+             ORDER BY updated_at DESC",
+        )?;
+
+        let rows = stmt.query_map([], |row| {
+            let source_str: String = row.get(1)?;
+            let status_str: String = row.get(4)?;
+            Ok(AgentSession {
+                session_id: row.get(0)?,
+                source: Self::deserialize_agent_source(&source_str),
+                cwd: row.get(2)?,
+                project_name: row.get(3)?,
+                status: Self::deserialize_agent_status(&status_str),
+                started_at: row.get(5)?,
+                updated_at: row.get(6)?,
+                completed_at: row.get(7)?,
+                last_message: row.get(8)?,
+                last_tool_name: row.get(9)?,
+                transcript_path: row.get(10)?,
+                needs_attention: row.get::<_, i32>(11)? != 0,
+                pid: row.get(12)?,
             })
         })?;
 
@@ -297,6 +351,7 @@ mod tests {
             last_tool_name: None,
             transcript_path: None,
             needs_attention: false,
+            pid: None,
         };
 
         db.upsert_session(&session).unwrap();
@@ -322,6 +377,7 @@ mod tests {
             last_tool_name: None,
             transcript_path: None,
             needs_attention: false,
+            pid: None,
         };
         db.upsert_session(&session).unwrap();
 
@@ -337,6 +393,7 @@ mod tests {
             tool_name: None,
             transcript_path: None,
             created_at: 1700000000000,
+            process_pid: None,
         };
 
         db.insert_event(&event).unwrap();
@@ -346,7 +403,7 @@ mod tests {
     }
 
     #[test]
-    fn test_list_active_sessions() {
+    fn test_list_all_sessions_includes_completed() {
         let db = setup_db();
         let running = AgentSession {
             session_id: "sess-A".into(),
@@ -361,6 +418,7 @@ mod tests {
             last_tool_name: None,
             transcript_path: None,
             needs_attention: false,
+            pid: None,
         };
         let completed = AgentSession {
             session_id: "sess-B".into(),
@@ -375,14 +433,16 @@ mod tests {
             last_tool_name: None,
             transcript_path: None,
             needs_attention: false,
+            pid: None,
         };
 
         db.upsert_session(&running).unwrap();
         db.upsert_session(&completed).unwrap();
 
-        let active = db.list_active_sessions().unwrap();
-        assert_eq!(active.len(), 1);
-        assert_eq!(active[0].session_id, "sess-A");
+        let all = db.list_all_sessions().unwrap();
+        assert_eq!(all.len(), 2);
+        assert!(all.iter().any(|s| s.session_id == "sess-A"));
+        assert!(all.iter().any(|s| s.session_id == "sess-B"));
     }
 
     #[test]
@@ -401,6 +461,7 @@ mod tests {
             last_tool_name: None,
             transcript_path: None,
             needs_attention: false,
+            pid: None,
         };
         db.upsert_session(&session).unwrap();
 
@@ -417,6 +478,7 @@ mod tests {
             last_tool_name: None,
             transcript_path: None,
             needs_attention: true,
+            pid: None,
         };
         db.upsert_session(&updated).unwrap();
 
@@ -451,6 +513,7 @@ mod tests {
             last_tool_name: None,
             transcript_path: None,
             needs_attention: false,
+            pid: None,
         };
         db.upsert_session(&session).unwrap();
 
@@ -467,6 +530,7 @@ mod tests {
                 tool_name: None,
                 transcript_path: None,
                 created_at: i,
+                process_pid: None,
             };
             db.insert_event(&event).unwrap();
         }
@@ -480,7 +544,7 @@ mod tests {
     }
 
     #[test]
-    fn test_list_active_sessions_excludes_failed() {
+    fn test_list_all_sessions_includes_failed() {
         let db = setup_db();
         let failed = AgentSession {
             session_id: "sess-F".into(),
@@ -495,10 +559,12 @@ mod tests {
             last_tool_name: None,
             transcript_path: None,
             needs_attention: false,
+            pid: None,
         };
         db.upsert_session(&failed).unwrap();
 
-        let active = db.list_active_sessions().unwrap();
-        assert_eq!(active.len(), 0);
+        let all = db.list_all_sessions().unwrap();
+        assert_eq!(all.len(), 1);
+        assert_eq!(all[0].session_id, "sess-F");
     }
 }

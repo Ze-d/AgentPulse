@@ -39,7 +39,7 @@ export const useSessionStore = defineStore("sessions", {
     async fetchSessions() {
       try {
         const result = await invoke<AgentSession[]>("get_sessions");
-        console.debug("[AgentPulse] fetchSessions:", result?.length ?? 0, "active");
+        console.debug("[AgentPulse] fetchSessions:", result?.length ?? 0, "sessions");
         this.sessions = result;
         this.error = null;
       } catch (e) {

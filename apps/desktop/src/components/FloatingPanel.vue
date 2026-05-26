@@ -1,13 +1,14 @@
 <script setup lang="ts">
-import { watch, onMounted, onUnmounted } from "vue";
+import { ref, watch, onMounted, onUnmounted } from "vue";
 import { useSessionStore } from "../stores/sessionStore";
 import { getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
-import { convertFileSrc } from "@tauri-apps/api/core";
+import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import SessionCard from "./SessionCard.vue";
 import ExpandedDetail from "./ExpandedDetail.vue";
 import { openUrl } from "@tauri-apps/plugin-opener";
 
 const store = useSessionStore();
+const closeClicked = ref(false);
 
 onMounted(() => {
   store.startPolling(2000);
@@ -37,12 +38,18 @@ async function handleOpenTranscript(path: string) {
   }
 }
 
+function handleCloseMousedown() {
+  console.log("[AgentPulse] mousedown on close button");
+}
+
 async function handleClose() {
+  closeClicked.value = true;
   try {
-    await getCurrentWindow().close();
-  } catch {
-    // window API may not be available in browser dev mode
+    await invoke("hide_main_window");
+  } catch (e) {
+    console.error("[AgentPulse] invoke hide_main_window failed:", e);
   }
+  closeClicked.value = false;
 }
 
 async function adjustWindowSize() {
@@ -73,13 +80,21 @@ watch(
 
 <template>
   <div class="floating-panel">
-    <div class="panel-header" data-tauri-drag-region>
-      <h1 class="prompt">
-        <span class="path">~/agentpulse</span>
-        <span class="dollar"> $</span>
-      </h1>
-      <span class="count">[{{ store.activeSessions.length }} active]</span>
-      <button class="close-btn" @click="handleClose" title="Close">x</button>
+    <div class="panel-header">
+      <div class="header-drag" data-tauri-drag-region>
+        <h1 class="prompt">
+          <span class="path">~/agentpulse</span>
+          <span class="dollar"> $</span>
+        </h1>
+        <span class="count">[{{ store.activeSessions.length }} active]</span>
+      </div>
+      <button
+        class="close-btn"
+        :class="{ 'close-clicked': closeClicked }"
+        @mousedown="handleCloseMousedown"
+        @click="handleClose"
+        title="Close"
+      >{{ closeClicked ? '...' : 'x' }}</button>
     </div>
 
     <div
@@ -132,19 +147,24 @@ watch(
 .panel-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   margin-bottom: 4px;
   padding-bottom: 4px;
   border-bottom: 1px solid var(--color-surface0);
+}
+
+.header-drag {
+  display: flex;
+  align-items: center;
+  flex: 1;
   cursor: grab;
 }
 
-.panel-header > * {
-  pointer-events: none;
+.header-drag:active {
+  cursor: grabbing;
 }
 
-.panel-header:active {
-  cursor: grabbing;
+.header-drag > * {
+  pointer-events: none;
 }
 
 .prompt {
@@ -164,6 +184,7 @@ watch(
 .count {
   font-size: 11px;
   color: var(--color-overlay0);
+  margin-left: auto;
 }
 
 .close-btn {
@@ -180,6 +201,10 @@ watch(
 
 .close-btn:hover {
   color: var(--color-red);
+}
+
+.close-clicked {
+  color: var(--color-green) !important;
 }
 
 .session-list {
