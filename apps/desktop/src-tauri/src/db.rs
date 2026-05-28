@@ -47,6 +47,7 @@ impl Database {
                 tool_name       TEXT,
                 transcript_path TEXT,
                 created_at      INTEGER NOT NULL,
+                process_pid     INTEGER,
                 FOREIGN KEY (session_id) REFERENCES sessions(session_id)
             );
 
@@ -83,16 +84,27 @@ impl Database {
             .to_string()
     }
 
-    fn deserialize_agent_source(s: &str) -> AgentSource {
-        serde_json::from_str(&format!("\"{s}\"")).unwrap()
+    fn deserialize_agent_source(s: &str) -> std::result::Result<AgentSource, String> {
+        serde_json::from_str(&format!("\"{s}\""))
+            .map_err(|e| format!("corrupt DB value for AgentSource '{s}': {e}"))
     }
 
-    fn deserialize_agent_status(s: &str) -> AgentStatus {
-        serde_json::from_str(&format!("\"{s}\"")).unwrap()
+    fn deserialize_agent_status(s: &str) -> std::result::Result<AgentStatus, String> {
+        serde_json::from_str(&format!("\"{s}\""))
+            .map_err(|e| format!("corrupt DB value for AgentStatus '{s}': {e}"))
     }
 
-    fn deserialize_event_type(s: &str) -> EventType {
-        serde_json::from_str(&format!("\"{s}\"")).unwrap()
+    fn deserialize_event_type(s: &str) -> std::result::Result<EventType, String> {
+        serde_json::from_str(&format!("\"{s}\""))
+            .map_err(|e| format!("corrupt DB value for EventType '{s}': {e}"))
+    }
+
+    /// Map a deserialize `Result<T, String>` into a `rusqlite::Result<T>` for
+    /// use inside `query_map` closures.
+    fn map_deser<T>(r: std::result::Result<T, String>) -> Result<T> {
+        r.map_err(|msg| {
+            rusqlite::Error::InvalidParameterName(msg)
+        })
     }
 
     // ------------------------------------------------------------------
@@ -152,10 +164,10 @@ impl Database {
             let status_str: String = row.get(4)?;
             Ok(AgentSession {
                 session_id: row.get(0)?,
-                source: Self::deserialize_agent_source(&source_str),
+                source: Self::map_deser(Self::deserialize_agent_source(&source_str))?,
                 cwd: row.get(2)?,
                 project_name: row.get(3)?,
-                status: Self::deserialize_agent_status(&status_str),
+                status: Self::map_deser(Self::deserialize_agent_status(&status_str))?,
                 started_at: row.get(5)?,
                 updated_at: row.get(6)?,
                 completed_at: row.get(7)?,
@@ -182,8 +194,9 @@ impl Database {
         self.conn.execute(
             "INSERT INTO events
                 (id, source, session_id, cwd, project_name, event_type,
-                 status, message, tool_name, transcript_path, created_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+                 status, message, tool_name, transcript_path, created_at,
+                 process_pid)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
             params![
                 event.id,
                 Self::serialize_agent_source(&event.source),
@@ -196,6 +209,7 @@ impl Database {
                 event.tool_name,
                 event.transcript_path,
                 event.created_at,
+                event.process_pid,
             ],
         )?;
         Ok(())
@@ -204,7 +218,8 @@ impl Database {
     pub fn get_events_for_session(&self, session_id: &str) -> Result<Vec<AgentEvent>> {
         let mut stmt = self.conn.prepare(
             "SELECT id, source, session_id, cwd, project_name, event_type,
-                    status, message, tool_name, transcript_path, created_at
+                    status, message, tool_name, transcript_path, created_at,
+                    process_pid
              FROM events
              WHERE session_id = ?1
              ORDER BY created_at DESC",
@@ -216,17 +231,17 @@ impl Database {
             let status_str: String = row.get(6)?;
             Ok(AgentEvent {
                 id: row.get(0)?,
-                source: Self::deserialize_agent_source(&source_str),
+                source: Self::map_deser(Self::deserialize_agent_source(&source_str))?,
                 session_id: row.get(2)?,
                 cwd: row.get(3)?,
                 project_name: row.get(4)?,
-                event_type: Self::deserialize_event_type(&event_type_str),
-                status: Self::deserialize_agent_status(&status_str),
+                event_type: Self::map_deser(Self::deserialize_event_type(&event_type_str))?,
+                status: Self::map_deser(Self::deserialize_agent_status(&status_str))?,
                 message: row.get(7)?,
                 tool_name: row.get(8)?,
                 transcript_path: row.get(9)?,
                 created_at: row.get(10)?,
-                process_pid: None,
+                process_pid: row.get(11)?,
             })
         })?;
 
@@ -255,10 +270,10 @@ impl Database {
             let status_str: String = row.get(4)?;
             Ok(AgentSession {
                 session_id: row.get(0)?,
-                source: Self::deserialize_agent_source(&source_str),
+                source: Self::map_deser(Self::deserialize_agent_source(&source_str))?,
                 cwd: row.get(2)?,
                 project_name: row.get(3)?,
-                status: Self::deserialize_agent_status(&status_str),
+                status: Self::map_deser(Self::deserialize_agent_status(&status_str))?,
                 started_at: row.get(5)?,
                 updated_at: row.get(6)?,
                 completed_at: row.get(7)?,
@@ -304,10 +319,10 @@ impl Database {
             let status_str: String = row.get(4)?;
             Ok(AgentSession {
                 session_id: row.get(0)?,
-                source: Self::deserialize_agent_source(&source_str),
+                source: Self::map_deser(Self::deserialize_agent_source(&source_str))?,
                 cwd: row.get(2)?,
                 project_name: row.get(3)?,
-                status: Self::deserialize_agent_status(&status_str),
+                status: Self::map_deser(Self::deserialize_agent_status(&status_str))?,
                 started_at: row.get(5)?,
                 updated_at: row.get(6)?,
                 completed_at: row.get(7)?,
@@ -400,6 +415,48 @@ mod tests {
         let events = db.get_events_for_session("sess-002").unwrap();
         assert_eq!(events.len(), 1);
         assert_eq!(events[0].id, "evt-001");
+    }
+
+    #[test]
+    fn test_event_process_pid_roundtrip() {
+        let db = setup_db();
+        let session = AgentSession {
+            session_id: "sess-pid".into(),
+            source: AgentSource::ClaudeCode,
+            cwd: "/tmp".into(),
+            project_name: "tmp".into(),
+            status: AgentStatus::Starting,
+            started_at: 1700000000000,
+            updated_at: 1700000000000,
+            completed_at: None,
+            last_message: None,
+            last_tool_name: None,
+            transcript_path: None,
+            needs_attention: false,
+            pid: None,
+        };
+        db.upsert_session(&session).unwrap();
+
+        let event = AgentEvent {
+            id: "evt-pid".into(),
+            source: AgentSource::ClaudeCode,
+            session_id: "sess-pid".into(),
+            cwd: "/tmp".into(),
+            project_name: Some("tmp".into()),
+            event_type: EventType::SessionStart,
+            status: AgentStatus::Starting,
+            message: None,
+            tool_name: None,
+            transcript_path: None,
+            created_at: 1700000000000,
+            process_pid: Some(12345),
+        };
+
+        db.insert_event(&event).unwrap();
+        let events = db.get_events_for_session("sess-pid").unwrap();
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].process_pid, Some(12345),
+            "process_pid should survive round-trip");
     }
 
     #[test]
@@ -541,6 +598,26 @@ mod tests {
         assert_eq!(events[0].id, "evt-2");
         assert_eq!(events[1].id, "evt-1");
         assert_eq!(events[2].id, "evt-0");
+    }
+
+    #[test]
+    fn test_deserialize_corrupt_value_returns_error() {
+        // Bug 1.2: corrupt DB values must not panic
+        assert!(Database::deserialize_agent_source("invalid_source").is_err());
+        assert!(Database::deserialize_agent_status("invalid_status").is_err());
+        assert!(Database::deserialize_event_type("invalid_event").is_err());
+    }
+
+    #[test]
+    fn test_deserialize_valid_values_succeed() {
+        let source = Database::deserialize_agent_source("claude-code").unwrap();
+        assert_eq!(source, AgentSource::ClaudeCode);
+
+        let status = Database::deserialize_agent_status("running").unwrap();
+        assert_eq!(status, AgentStatus::Running);
+
+        let event_type = Database::deserialize_event_type("notification").unwrap();
+        assert_eq!(event_type, EventType::Notification);
     }
 
     #[test]

@@ -1,5 +1,6 @@
 use std::io::Read;
 use std::path::Path;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
 
@@ -77,18 +78,33 @@ pub fn normalize_claude_code_event(raw: &serde_json::Value) -> AgentEvent {
 /// applies the state machine, and persists the results via the `Database`.
 pub struct EventServer {
     db: Arc<Mutex<Database>>,
+    shutdown: Arc<AtomicBool>,
 }
 
 impl EventServer {
     pub fn new(db: Database) -> Self {
         Self {
             db: Arc::new(Mutex::new(db)),
+            shutdown: Arc::new(AtomicBool::new(false)),
         }
     }
 
     /// Create an EventServer from an already-shared database reference.
     pub fn from_arc(db: Arc<Mutex<Database>>) -> Self {
-        Self { db }
+        Self {
+            db,
+            shutdown: Arc::new(AtomicBool::new(false)),
+        }
+    }
+
+    /// Signal the server thread to stop accepting new requests.
+    pub fn shutdown(&self) {
+        self.shutdown.store(true, Ordering::Relaxed);
+    }
+
+    /// Return a clone of the shutdown flag for external signaling.
+    pub fn shutdown_signal(&self) -> Arc<AtomicBool> {
+        self.shutdown.clone()
     }
 
     /// Normalize the raw JSON event, apply the state-machine transition,
@@ -168,12 +184,16 @@ impl EventServer {
     /// - `POST /api/events`  -- accept event JSON, return 201
     /// - `GET  /api/sessions` -- return active sessions as JSON
     /// - `GET  /api/health`  -- return `{"status":"ok"}`
-    pub fn start(db: Database, addr: &str) -> Result<(), String> {
+    ///
+    /// Returns an `Arc<AtomicBool>` that can be used to signal graceful
+    /// shutdown of the server thread.
+    pub fn start(db: Database, addr: &str) -> Result<Arc<AtomicBool>, String> {
         let server =
             tiny_http::Server::http(addr).map_err(|e| format!("failed to start server: {}", e))?;
         let event_server = Self::new(db);
+        let shutdown = event_server.shutdown_signal();
         Self::run_server_loop(server, event_server);
-        Ok(())
+        Ok(shutdown)
     }
 
     /// Start the event server with a shared database reference.
@@ -181,18 +201,28 @@ impl EventServer {
     /// Same as `start` but accepts an `Arc<Mutex<Database>>` directly,
     /// allowing the caller to share the same database instance with other
     /// components (e.g. Tauri state).
-    pub fn start_shared(db: Arc<Mutex<Database>>, addr: &str) -> Result<(), String> {
+    ///
+    /// Returns an `Arc<AtomicBool>` that can be used to signal graceful
+    /// shutdown of the server thread.
+    pub fn start_shared(db: Arc<Mutex<Database>>, addr: &str) -> Result<Arc<AtomicBool>, String> {
         let server =
             tiny_http::Server::http(addr).map_err(|e| format!("failed to start server: {}", e))?;
         let event_server = Self::from_arc(db);
+        let shutdown = event_server.shutdown_signal();
         Self::run_server_loop(server, event_server);
-        Ok(())
+        Ok(shutdown)
     }
 
     /// Internal: spawn a thread that runs the HTTP request loop.
     fn run_server_loop(server: tiny_http::Server, event_server: EventServer) {
         thread::spawn(move || {
             for mut request in server.incoming_requests() {
+                // Bug 1.6: check shutdown flag to allow graceful stop
+                if event_server.shutdown.load(Ordering::Relaxed) {
+                    log::info!("event_server: shutdown signaled, stopping");
+                    break;
+                }
+
                 let url = request.url().to_string();
                 let method = format!("{}", request.method());
 
@@ -211,6 +241,8 @@ impl EventServer {
                                         &serde_json::json!({"event": event, "session": session}),
                                     ),
                                     Err(e) => {
+                                        // Bug 1.5: log server-side error for debugging
+                                        log::error!("event_server: handle_event: {}", e);
                                         json_response(500, &serde_json::json!({"error": e}))
                                     }
                                 },
@@ -222,13 +254,27 @@ impl EventServer {
                         }
                     }
                     ("GET", "/api/sessions") => {
-                        let db = event_server.db.lock().unwrap();
-                        match db.list_all_sessions() {
-                            Ok(sessions) => json_response(200, &serde_json::json!(sessions)),
-                            Err(e) => json_response(
-                                500,
-                                &serde_json::json!({"error": format!("db error: {}", e)}),
-                            ),
+                        // Bug 1.3: handle poisoned Mutex gracefully
+                        match event_server.db.lock() {
+                            Ok(db) => match db.list_all_sessions() {
+                                Ok(sessions) => {
+                                    json_response(200, &serde_json::json!(sessions))
+                                }
+                                Err(e) => {
+                                    log::error!("event_server: db list_sessions: {}", e);
+                                    json_response(
+                                        500,
+                                        &serde_json::json!({"error": format!("db error: {}", e)}),
+                                    )
+                                }
+                            },
+                            Err(e) => {
+                                log::error!("event_server: lock poisoned: {}", e);
+                                json_response(
+                                    500,
+                                    &serde_json::json!({"error": "internal server error"}),
+                                )
+                            }
                         }
                     }
                     ("GET", "/api/health") => {
