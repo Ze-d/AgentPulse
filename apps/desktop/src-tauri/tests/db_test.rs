@@ -73,7 +73,7 @@ fn test_insert_event() {
 }
 
 #[test]
-fn test_list_active_sessions() {
+fn test_list_all_sessions() {
     let db = setup_db();
     let running = AgentSession {
         session_id: "sess-A".into(),
