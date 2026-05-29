@@ -8,7 +8,12 @@ on:
 
 jobs:
   check:
-    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [windows-latest, ubuntu-latest, macos-latest]
+
+    runs-on: ${{ matrix.platform }}
 
     steps:
       - name: Checkout
@@ -22,20 +27,57 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: x86_64-pc-windows-msvc
+          components: clippy, rustfmt
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Cache Rust
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            apps/desktop/src-tauri/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('apps/desktop/src-tauri/Cargo.lock') }}
 
       - name: Install frontend dependencies
         working-directory: apps/desktop
-        run: npm install --include=optional
+        run: npm ci --include=optional
 
       - name: TypeScript type check
         working-directory: apps/desktop
         run: npx vue-tsc --noEmit
 
-      - name: Cargo check
+      - name: Frontend tests
+        working-directory: apps/desktop
+        run: npm test
+
+      - name: Python tests
+        run: |
+          python -m pip install pytest
+          python -m pytest tests/
+
+      - name: Cargo fmt check
         working-directory: apps/desktop/src-tauri
-        run: cargo check
+        run: cargo fmt --check
+
+      - name: Cargo clippy
+        working-directory: apps/desktop/src-tauri
+        run: cargo clippy -- -D warnings
 
       - name: Cargo test
         working-directory: apps/desktop/src-tauri
         run: cargo test
+
+      - name: Cargo audit
+        working-directory: apps/desktop/src-tauri
+        run: |
+          cargo install cargo-audit --locked 2>/dev/null || true
+          cargo audit
+
+      - name: npm audit
+        working-directory: apps/desktop
+        run: npm audit --audit-level=high

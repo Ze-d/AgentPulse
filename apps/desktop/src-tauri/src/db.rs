@@ -114,9 +114,7 @@ impl Database {
     /// Map a deserialize `Result<T, String>` into a `rusqlite::Result<T>` for
     /// use inside `query_map` closures.
     fn map_deser<T>(r: std::result::Result<T, String>) -> Result<T> {
-        r.map_err(|msg| {
-            rusqlite::Error::InvalidParameterName(msg)
-        })
+        r.map_err(rusqlite::Error::InvalidParameterName)
     }
 
     fn map_session_row(row: &rusqlite::Row) -> Result<AgentSession> {
@@ -453,8 +451,11 @@ mod tests {
         db.insert_event(&event).unwrap();
         let events = db.get_events_for_session("sess-pid").unwrap();
         assert_eq!(events.len(), 1);
-        assert_eq!(events[0].process_pid, Some(12345),
-            "process_pid should survive round-trip");
+        assert_eq!(
+            events[0].process_pid,
+            Some(12345),
+            "process_pid should survive round-trip"
+        );
     }
 
     #[test]
@@ -762,13 +763,22 @@ mod tests {
         db.upsert_session(&active).unwrap();
 
         let removed = db.cleanup_old_sessions(7, now_ms).unwrap();
-        assert!(removed >= 1, "should have removed at least the old completed session");
+        assert!(
+            removed >= 1,
+            "should have removed at least the old completed session"
+        );
 
         let remaining = db.list_all_sessions().unwrap();
         let ids: Vec<&str> = remaining.iter().map(|s| s.session_id.as_str()).collect();
 
-        assert!(!ids.contains(&"old-done"), "old completed session should be removed");
-        assert!(ids.contains(&"recent-done"), "recent completed session should remain");
+        assert!(
+            !ids.contains(&"old-done"),
+            "old completed session should be removed"
+        );
+        assert!(
+            ids.contains(&"recent-done"),
+            "recent completed session should remain"
+        );
         assert!(ids.contains(&"active-sess"), "active session should remain");
     }
 }

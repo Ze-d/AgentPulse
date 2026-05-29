@@ -109,7 +109,10 @@ impl EventServer {
 
     /// Normalize the raw JSON event, apply the state-machine transition,
     /// upsert the session, insert the event, and return both.
-    pub fn handle_event(&self, raw: &serde_json::Value) -> Result<(AgentEvent, AgentSession), String> {
+    pub fn handle_event(
+        &self,
+        raw: &serde_json::Value,
+    ) -> Result<(AgentEvent, AgentSession), String> {
         let event = normalize_claude_code_event(raw);
 
         let db = self.db.lock().map_err(|e| format!("lock error: {}", e))?;
@@ -124,12 +127,12 @@ impl EventServer {
         let session = match existing {
             Some(old) => {
                 let new_status = machine.transition(old.status.clone(), &event.event_type);
-                let completed_at = if matches!(new_status, AgentStatus::Completed | AgentStatus::Failed)
-                {
-                    Some(now)
-                } else {
-                    old.completed_at
-                };
+                let completed_at =
+                    if matches!(new_status, AgentStatus::Completed | AgentStatus::Failed) {
+                        Some(now)
+                    } else {
+                        old.completed_at
+                    };
 
                 AgentSession {
                     session_id: old.session_id,
@@ -151,7 +154,10 @@ impl EventServer {
                 }
             }
             None => {
-                let project_name = event.project_name.clone().unwrap_or_else(|| "unknown".into());
+                let project_name = event
+                    .project_name
+                    .clone()
+                    .unwrap_or_else(|| "unknown".into());
                 AgentSession {
                     session_id: event.session_id.clone(),
                     source: AgentSource::ClaudeCode,
@@ -257,9 +263,7 @@ impl EventServer {
                         // Bug 1.3: handle poisoned Mutex gracefully
                         match event_server.db.lock() {
                             Ok(db) => match db.list_all_sessions() {
-                                Ok(sessions) => {
-                                    json_response(200, &serde_json::json!(sessions))
-                                }
+                                Ok(sessions) => json_response(200, &serde_json::json!(sessions)),
                                 Err(e) => {
                                     log::error!("event_server: db list_sessions: {}", e);
                                     json_response(
@@ -290,7 +294,10 @@ impl EventServer {
 }
 
 /// Build a JSON HTTP response with the given status code.
-fn json_response(status_code: u16, data: &serde_json::Value) -> tiny_http::Response<Box<dyn Read + Send>> {
+fn json_response(
+    status_code: u16,
+    data: &serde_json::Value,
+) -> tiny_http::Response<Box<dyn Read + Send>> {
     let body = serde_json::to_string(data).unwrap_or_default();
     tiny_http::Response::from_string(body)
         .with_header(

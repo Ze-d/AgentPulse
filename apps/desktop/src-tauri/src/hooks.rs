@@ -38,10 +38,10 @@ pub fn find_monitor_script(resource_dir: &Path) -> Result<PathBuf, String> {
 
     // Dev fallback: resolve relative to the Cargo manifest directory.
     let dev_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("..")   // src-tauri/
-        .join("..")   // desktop/
-        .join("..")   // apps/
-        .join("..")   // repo root
+        .join("..") // src-tauri/
+        .join("..") // desktop/
+        .join("..") // apps/
+        .join("..") // repo root
         .join("adapters")
         .join("claude-code")
         .join("monitor_hook.py");
@@ -62,29 +62,22 @@ pub fn find_monitor_script(resource_dir: &Path) -> Result<PathBuf, String> {
 
 /// Copy `monitor_hook.py` into `app_data_dir`, overwriting only when the
 /// source is newer. Returns the destination path.
-pub fn extract_monitor_script(
-    resource_dir: &Path,
-    app_data_dir: &Path,
-) -> Result<PathBuf, String> {
+pub fn extract_monitor_script(resource_dir: &Path, app_data_dir: &Path) -> Result<PathBuf, String> {
     let src = find_monitor_script(resource_dir)?;
 
-    fs::create_dir_all(app_data_dir)
-        .map_err(|e| format!("create app_data_dir: {e}"))?;
+    fs::create_dir_all(app_data_dir).map_err(|e| format!("create app_data_dir: {e}"))?;
 
     let dst = app_data_dir.join("monitor_hook.py");
 
     // Only copy if the source is newer (or destination missing).
     let should_copy = match (fs::metadata(&src), fs::metadata(&dst)) {
-        (Ok(src_meta), Ok(dst_meta)) => {
-            src_meta.modified().ok() > dst_meta.modified().ok()
-        }
+        (Ok(src_meta), Ok(dst_meta)) => src_meta.modified().ok() > dst_meta.modified().ok(),
         (Ok(_), Err(_)) => true, // destination missing
         _ => false,
     };
 
     if should_copy {
-        fs::copy(&src, &dst)
-            .map_err(|e| format!("copy monitor_hook.py: {e}"))?;
+        fs::copy(&src, &dst).map_err(|e| format!("copy monitor_hook.py: {e}"))?;
         log::info!("monitor_hook.py extracted to {}", dst.display());
     }
 
@@ -129,11 +122,9 @@ fn load_settings(path: &Path) -> Value {
 
 fn save_settings(path: &Path, data: &Value) -> Result<(), String> {
     if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)
-            .map_err(|e| format!("create dir {}: {e}", parent.display()))?;
+        fs::create_dir_all(parent).map_err(|e| format!("create dir {}: {e}", parent.display()))?;
     }
-    let json_str =
-        serde_json::to_string_pretty(data).map_err(|e| format!("serialize: {e}"))?;
+    let json_str = serde_json::to_string_pretty(data).map_err(|e| format!("serialize: {e}"))?;
     fs::write(path, json_str).map_err(|e| format!("write {}: {e}", path.display()))?;
     Ok(())
 }
@@ -242,9 +233,7 @@ pub fn unregister_hooks(settings_path: &Path) -> Result<String, String> {
 
 /// Return `{event_name: bool}` indicating which hooks are installed with the
 /// correct monitor script path.
-pub fn get_hook_status(
-    settings_path: &Path,
-) -> Result<HashMap<String, bool>, String> {
+pub fn get_hook_status(settings_path: &Path) -> Result<HashMap<String, bool>, String> {
     let settings = load_settings(settings_path);
     let hooks = settings.get("hooks").cloned().unwrap_or(json!({}));
 
@@ -382,7 +371,10 @@ mod tests {
         assert_eq!(settings["model"], "claude-sonnet-4-6");
         let perms = &settings["permissions"]["allow"][0];
         assert_eq!(perms, "Read");
-        assert!(settings["hooks"].as_object().unwrap().contains_key("SessionStart"));
+        assert!(settings["hooks"]
+            .as_object()
+            .unwrap()
+            .contains_key("SessionStart"));
     }
 
     #[test]

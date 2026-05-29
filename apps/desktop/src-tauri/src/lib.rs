@@ -6,11 +6,11 @@ pub mod process_checker;
 pub mod state_machine;
 pub mod tray;
 
+use db::Database;
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
 use tauri::Manager;
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
-use db::Database;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -145,7 +145,6 @@ pub fn run() {
             commands::hide_main_window,
         ])
         .setup(|app| {
-
             tray::setup_tray(app)?;
 
             // Intercept window close: minimize to tray with remembered preference
@@ -163,9 +162,7 @@ pub fn run() {
                         }
                     };
 
-                    let action = pref_path
-                        .as_ref()
-                        .and_then(|p| read_close_preference(p));
+                    let action = pref_path.as_ref().and_then(|p| read_close_preference(p));
 
                     match action.as_deref() {
                         Some("tray") => {

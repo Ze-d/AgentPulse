@@ -2,9 +2,15 @@ use crate::*;
 
 pub struct StateMachine;
 
+impl Default for StateMachine {
+    fn default() -> Self {
+        Self
+    }
+}
+
 impl StateMachine {
     pub fn new() -> Self {
-        StateMachine
+        Self
     }
 
     pub fn transition(&self, current: AgentStatus, event_type: &EventType) -> AgentStatus {

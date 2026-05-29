@@ -10,7 +10,49 @@ permissions:
   contents: write
 
 jobs:
+  test:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Install frontend dependencies
+        working-directory: apps/desktop
+        run: npm ci --include=optional
+
+      - name: TypeScript type check
+        working-directory: apps/desktop
+        run: npx vue-tsc --noEmit
+
+      - name: Frontend tests
+        working-directory: apps/desktop
+        run: npm test
+
+      - name: Cargo fmt check
+        working-directory: apps/desktop/src-tauri
+        run: cargo fmt --check
+
+      - name: Cargo clippy
+        working-directory: apps/desktop/src-tauri
+        run: cargo clippy -- -D warnings
+
+      - name: Cargo test
+        working-directory: apps/desktop/src-tauri
+        run: cargo test
+
   build:
+    needs: test
     strategy:
       fail-fast: false
       matrix:
@@ -48,8 +90,7 @@ jobs:
 
       - name: Install frontend dependencies
         working-directory: apps/desktop
-        run: |
-          npm install
+        run: npm ci --include=optional
 
       - name: Force install native bindings (Windows)
         if: runner.os == 'Windows'
@@ -80,7 +121,7 @@ jobs:
           npm ls lightningcss-darwin-arm64
 
       - name: Build and publish
-        uses: tauri-apps/tauri-action@v0
+        uses: tauri-apps/tauri-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
