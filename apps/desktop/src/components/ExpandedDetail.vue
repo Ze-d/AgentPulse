@@ -1,7 +1,6 @@
 <script setup lang="ts">
-import { computed } from "vue";
 import type { AgentSession } from "../types/agent";
-import { STATUS_COLORS, STATUS_LABELS, formatDuration } from "../types/agent";
+import { useSessionDisplay } from "../composables/useSessionDisplay";
 
 const props = defineProps<{
   session: AgentSession;
@@ -13,11 +12,7 @@ const emit = defineEmits<{
   openTranscript: [path: string];
 }>();
 
-const statusColor = computed(() => STATUS_COLORS[props.session.status]);
-const statusLabel = computed(() => STATUS_LABELS[props.session.status]);
-const duration = computed(() =>
-  formatDuration(props.session.startedAt, props.session.completedAt)
-);
+const { statusColor, statusLabel, duration } = useSessionDisplay(props.session);
 </script>
 
 <template>

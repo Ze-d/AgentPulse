@@ -1,22 +1,22 @@
 import { defineStore } from "pinia";
-import { invoke } from "@tauri-apps/api/core";
-import type { AgentSession, AgentEvent } from "../types/agent";
+import type { AgentSession } from "../types/agent";
+import { getSessions } from "../utils/ipc";
 
 interface SessionState {
   sessions: AgentSession[];
-  selectedSessionId: string | null;
   expandedSessionId: string | null;
   pollingInterval: number | null;
   error: string | null;
+  isLoading: boolean;
 }
 
 export const useSessionStore = defineStore("sessions", {
   state: (): SessionState => ({
     sessions: [],
-    selectedSessionId: null,
     expandedSessionId: null,
     pollingInterval: null,
     error: null,
+    isLoading: true,
   }),
 
   getters: {
@@ -28,9 +28,6 @@ export const useSessionStore = defineStore("sessions", {
     attentionSessions: (state) =>
       state.sessions.filter((s) => s.needsAttention),
 
-    selectedSession: (state) =>
-      state.sessions.find((s) => s.sessionId === state.selectedSessionId) ?? null,
-
     expandedSession: (state) =>
       state.sessions.find((s) => s.sessionId === state.expandedSessionId) ?? null,
   },
@@ -38,41 +35,14 @@ export const useSessionStore = defineStore("sessions", {
   actions: {
     async fetchSessions() {
       try {
-        const result = await invoke<AgentSession[]>("get_sessions");
-        console.debug("[AgentPulse] fetchSessions:", result?.length ?? 0, "sessions");
+        const result = await getSessions();
         this.sessions = result;
         this.error = null;
       } catch (e) {
         console.error("[AgentPulse] fetchSessions error:", e);
         this.error = String(e);
-      }
-    },
-
-    async fetchSessionDetail(sessionId: string) {
-      try {
-        const session = await invoke<AgentSession | null>(
-          "get_session_detail",
-          { sessionId }
-        );
-        if (session) {
-          const idx = this.sessions.findIndex(
-            (s) => s.sessionId === sessionId
-          );
-          if (idx >= 0) {
-            this.sessions[idx] = session;
-          }
-        }
-      } catch (e) {
-        this.error = String(e);
-      }
-    },
-
-    async fetchSessionEvents(sessionId: string): Promise<AgentEvent[]> {
-      try {
-        return await invoke<AgentEvent[]>("get_session_events", { sessionId });
-      } catch (e) {
-        this.error = String(e);
-        return [];
+      } finally {
+        this.isLoading = false;
       }
     },
 
@@ -94,6 +64,10 @@ export const useSessionStore = defineStore("sessions", {
     toggleExpand(sessionId: string) {
       this.expandedSessionId =
         this.expandedSessionId === sessionId ? null : sessionId;
+    },
+
+    clearError() {
+      this.error = null;
     },
   },
 });

@@ -23,11 +23,17 @@ impl StateMachine {
             (AgentStatus::Running, EventType::PreToolUse) => AgentStatus::ToolRunning,
             (AgentStatus::WaitingInput, EventType::PreToolUse) => AgentStatus::ToolRunning,
             (AgentStatus::WaitingPermission, EventType::PreToolUse) => AgentStatus::ToolRunning,
+            (AgentStatus::Completed, EventType::PreToolUse) => AgentStatus::ToolRunning,
+            (AgentStatus::Failed, EventType::PreToolUse) => AgentStatus::ToolRunning,
             (AgentStatus::ToolRunning, EventType::PostToolUse) => AgentStatus::Running,
 
             // Permission & input
             (AgentStatus::Running, EventType::PermissionRequest) => AgentStatus::WaitingPermission,
             (_, EventType::Notification) => AgentStatus::WaitingInput,
+
+            // Wake terminal states on any other new activity
+            (AgentStatus::Completed, _) => AgentStatus::Running,
+            (AgentStatus::Failed, _) => AgentStatus::Running,
 
             // Default: keep current status
             _ => current,

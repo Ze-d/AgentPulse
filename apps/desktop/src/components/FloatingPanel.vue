@@ -2,10 +2,14 @@
 import { ref, watch, onMounted, onUnmounted } from "vue";
 import { useSessionStore } from "../stores/sessionStore";
 import { getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
-import { convertFileSrc, invoke } from "@tauri-apps/api/core";
+import { hideMainWindow } from "../utils/ipc";
 import SessionCard from "./SessionCard.vue";
 import ExpandedDetail from "./ExpandedDetail.vue";
-import { openUrl } from "@tauri-apps/plugin-opener";
+import { openDirectory, openTranscript } from "../utils/openActions";
+
+const HEADER_HEIGHT = 28;
+const CARD_HEIGHT = 34;
+const PANEL_PADDING = 20;
 
 const store = useSessionStore();
 const closeClicked = ref(false);
@@ -24,17 +28,21 @@ function handleCardClick(sessionId: string) {
 
 async function handleOpenDir(cwd: string) {
   try {
-    await openUrl(convertFileSrc(cwd));
+    await openDirectory(cwd);
+    store.error = null;
   } catch (e) {
     console.error("[AgentPulse] Failed to open dir:", e);
+    store.error = String(e);
   }
 }
 
 async function handleOpenTranscript(path: string) {
   try {
-    await openUrl(convertFileSrc(path));
+    await openTranscript(path);
+    store.error = null;
   } catch (e) {
     console.error("[AgentPulse] Failed to open transcript:", e);
+    store.error = String(e);
   }
 }
 
@@ -45,7 +53,7 @@ function handleCloseMousedown() {
 async function handleClose() {
   closeClicked.value = true;
   try {
-    await invoke("hide_main_window");
+    await hideMainWindow();
   } catch (e) {
     console.error("[AgentPulse] invoke hide_main_window failed:", e);
   }
@@ -53,13 +61,10 @@ async function handleClose() {
 }
 
 async function adjustWindowSize() {
-  const headerHeight = 28;
-  const cardHeight = 34;
-  const padding = 20;
   const expandedExtra = store.expandedSessionId ? 120 : 0;
 
   const contentHeight = store.sessions.length > 0
-    ? headerHeight + store.sessions.length * cardHeight + padding + expandedExtra
+    ? HEADER_HEIGHT + store.sessions.length * CARD_HEIGHT + PANEL_PADDING + expandedExtra
     : 72;
 
   const height = Math.min(Math.max(contentHeight, 72), 420);
@@ -86,22 +91,24 @@ watch(
           <span class="path">~/agentpulse</span>
           <span class="dollar"> $</span>
         </h1>
-        <span class="count">[{{ store.activeSessions.length }} active]</span>
+        <span class="count">[{{ store.sessions.length }} active]</span>
       </div>
+      <button class="refresh-btn" @click="store.fetchSessions()" title="Refresh">↻</button>
       <button
         class="close-btn"
         :class="{ 'close-clicked': closeClicked }"
         @mousedown="handleCloseMousedown"
         @click="handleClose"
-        title="Close"
-      >{{ closeClicked ? '...' : 'x' }}</button>
+        title="Minimize to tray"
+      >{{ closeClicked ? '...' : '_' }}</button>
     </div>
 
     <div
       v-if="store.error"
       class="error-banner"
     >
-      {{ store.error }}
+      <span class="error-text">{{ store.error }}</span>
+      <button class="error-dismiss" @click="store.clearError()" title="Dismiss">x</button>
     </div>
 
     <div
@@ -109,20 +116,23 @@ watch(
       class="empty-state"
       data-tauri-drag-region
     >
-      <span class="waiting">$ waiting for hooks...</span>
+      <span v-if="store.isLoading" class="waiting">$ <span class="cursor-blink">_</span></span>
+      <span v-else class="waiting">$ agentpulse is listening...</span>
     </div>
 
     <div v-else class="session-list">
       <template v-for="session in store.sessions" :key="session.sessionId">
-        <ExpandedDetail
-          v-if="store.expandedSessionId === session.sessionId"
-          :session="session"
-          @collapse="store.toggleExpand(session.sessionId)"
-          @open-dir="handleOpenDir"
-          @open-transcript="handleOpenTranscript"
-        />
+        <Transition name="slide">
+          <ExpandedDetail
+            v-if="store.expandedSessionId === session.sessionId"
+            :session="session"
+            @collapse="store.toggleExpand(session.sessionId)"
+            @open-dir="handleOpenDir"
+            @open-transcript="handleOpenTranscript"
+          />
+        </Transition>
         <SessionCard
-          v-else
+          v-if="store.expandedSessionId !== session.sessionId"
           :session="session"
           @click="handleCardClick"
         />
@@ -187,6 +197,22 @@ watch(
   margin-left: auto;
 }
 
+.refresh-btn {
+  background: none;
+  border: none;
+  color: var(--color-overlay0);
+  font-size: 14px;
+  font-family: inherit;
+  cursor: pointer;
+  padding: 0 2px;
+  line-height: 1;
+  pointer-events: auto;
+}
+
+.refresh-btn:hover {
+  color: var(--color-blue);
+}
+
 .close-btn {
   background: none;
   border: none;
@@ -222,6 +248,9 @@ watch(
 }
 
 .error-banner {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
   background: rgba(243, 139, 168, 0.15);
   border: 1px solid var(--color-red);
   border-radius: 4px;
@@ -229,6 +258,29 @@ watch(
   margin-bottom: 6px;
   font-size: 11px;
   color: var(--color-red);
+}
+
+.error-text {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.error-dismiss {
+  background: none;
+  border: none;
+  color: var(--color-red);
+  cursor: pointer;
+  font-size: 14px;
+  font-family: inherit;
+  padding: 0 2px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.error-dismiss:hover {
+  color: var(--color-maroon);
 }
 
 .empty-state {
@@ -247,5 +299,26 @@ watch(
 .waiting {
   color: var(--color-overlay0);
   font-size: 11px;
+}
+
+.cursor-blink {
+  animation: blink 1s step-end infinite;
+  font-weight: 700;
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+.slide-enter-active,
+.slide-leave-active {
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.slide-enter-from,
+.slide-leave-to {
+  opacity: 0;
+  transform: translateY(-6px);
 }
 </style>

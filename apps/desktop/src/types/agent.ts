@@ -1,4 +1,4 @@
-export type AgentSource = "claude-code";
+export type AgentSource = "claude-code" | "codex" | "gemini" | "copilot";
 
 export type AgentStatus =
   | "starting"

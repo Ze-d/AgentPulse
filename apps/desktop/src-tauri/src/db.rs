@@ -1,3 +1,5 @@
+use std::path::Path;
+
 use rusqlite::{params, Connection, Result};
 
 use crate::{AgentEvent, AgentSession, AgentSource, AgentStatus, EventType};
@@ -9,6 +11,16 @@ pub struct Database {
 impl Database {
     pub fn new_in_memory() -> Result<Self> {
         let conn = Connection::open_in_memory()?;
+        let db = Self { conn };
+        db.init_schema()?;
+        Ok(db)
+    }
+
+    pub fn new(path: &Path) -> Result<Self> {
+        if let Some(parent) = path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        let conn = Connection::open(path)?;
         let db = Self { conn };
         db.init_schema()?;
         Ok(db)
@@ -107,6 +119,26 @@ impl Database {
         })
     }
 
+    fn map_session_row(row: &rusqlite::Row) -> Result<AgentSession> {
+        let source_str: String = row.get(1)?;
+        let status_str: String = row.get(4)?;
+        Ok(AgentSession {
+            session_id: row.get(0)?,
+            source: Self::map_deser(Self::deserialize_agent_source(&source_str))?,
+            cwd: row.get(2)?,
+            project_name: row.get(3)?,
+            status: Self::map_deser(Self::deserialize_agent_status(&status_str))?,
+            started_at: row.get(5)?,
+            updated_at: row.get(6)?,
+            completed_at: row.get(7)?,
+            last_message: row.get(8)?,
+            last_tool_name: row.get(9)?,
+            transcript_path: row.get(10)?,
+            needs_attention: row.get::<_, i32>(11)? != 0,
+            pid: row.get(12)?,
+        })
+    }
+
     // ------------------------------------------------------------------
     // Session CRUD
     // ------------------------------------------------------------------
@@ -159,25 +191,7 @@ impl Database {
              WHERE session_id = ?1",
         )?;
 
-        let mut rows = stmt.query_map(params![session_id], |row| {
-            let source_str: String = row.get(1)?;
-            let status_str: String = row.get(4)?;
-            Ok(AgentSession {
-                session_id: row.get(0)?,
-                source: Self::map_deser(Self::deserialize_agent_source(&source_str))?,
-                cwd: row.get(2)?,
-                project_name: row.get(3)?,
-                status: Self::map_deser(Self::deserialize_agent_status(&status_str))?,
-                started_at: row.get(5)?,
-                updated_at: row.get(6)?,
-                completed_at: row.get(7)?,
-                last_message: row.get(8)?,
-                last_tool_name: row.get(9)?,
-                transcript_path: row.get(10)?,
-                needs_attention: row.get::<_, i32>(11)? != 0,
-                pid: row.get(12)?,
-            })
-        })?;
+        let mut rows = stmt.query_map(params![session_id], Self::map_session_row)?;
 
         match rows.next() {
             Some(Ok(session)) => Ok(Some(session)),
@@ -265,25 +279,7 @@ impl Database {
              ORDER BY updated_at DESC",
         )?;
 
-        let rows = stmt.query_map([], |row| {
-            let source_str: String = row.get(1)?;
-            let status_str: String = row.get(4)?;
-            Ok(AgentSession {
-                session_id: row.get(0)?,
-                source: Self::map_deser(Self::deserialize_agent_source(&source_str))?,
-                cwd: row.get(2)?,
-                project_name: row.get(3)?,
-                status: Self::map_deser(Self::deserialize_agent_status(&status_str))?,
-                started_at: row.get(5)?,
-                updated_at: row.get(6)?,
-                completed_at: row.get(7)?,
-                last_message: row.get(8)?,
-                last_tool_name: row.get(9)?,
-                transcript_path: row.get(10)?,
-                needs_attention: row.get::<_, i32>(11)? != 0,
-                pid: row.get(12)?,
-            })
-        })?;
+        let rows = stmt.query_map([], Self::map_session_row)?;
 
         let mut sessions = Vec::new();
         for row in rows {
@@ -314,31 +310,33 @@ impl Database {
              ORDER BY updated_at DESC",
         )?;
 
-        let rows = stmt.query_map([], |row| {
-            let source_str: String = row.get(1)?;
-            let status_str: String = row.get(4)?;
-            Ok(AgentSession {
-                session_id: row.get(0)?,
-                source: Self::map_deser(Self::deserialize_agent_source(&source_str))?,
-                cwd: row.get(2)?,
-                project_name: row.get(3)?,
-                status: Self::map_deser(Self::deserialize_agent_status(&status_str))?,
-                started_at: row.get(5)?,
-                updated_at: row.get(6)?,
-                completed_at: row.get(7)?,
-                last_message: row.get(8)?,
-                last_tool_name: row.get(9)?,
-                transcript_path: row.get(10)?,
-                needs_attention: row.get::<_, i32>(11)? != 0,
-                pid: row.get(12)?,
-            })
-        })?;
+        let rows = stmt.query_map([], Self::map_session_row)?;
 
         let mut sessions = Vec::new();
         for row in rows {
             sessions.push(row?);
         }
         Ok(sessions)
+    }
+
+    pub fn cleanup_old_sessions(&self, retain_days: u32, now_ms: i64) -> Result<usize> {
+        let cutoff = now_ms - (retain_days as i64 * 24 * 60 * 60 * 1000);
+        let mut stmt = self.conn.prepare(
+            "DELETE FROM events WHERE session_id IN (
+                SELECT session_id FROM sessions
+                WHERE status IN ('completed', 'failed')
+                  AND updated_at < ?
+            )",
+        )?;
+        stmt.execute(params![cutoff])?;
+
+        let mut stmt = self.conn.prepare(
+            "DELETE FROM sessions
+             WHERE status IN ('completed', 'failed')
+               AND updated_at < ?",
+        )?;
+        let removed = stmt.execute(params![cutoff])?;
+        Ok(removed)
     }
 }
 
@@ -621,6 +619,22 @@ mod tests {
     }
 
     #[test]
+    fn test_agent_source_new_variants_roundtrip() {
+        let cases = vec![
+            ("codex", AgentSource::Codex),
+            ("gemini", AgentSource::Gemini),
+            ("copilot", AgentSource::Copilot),
+        ];
+        for (str_val, variant) in cases {
+            let deser = Database::deserialize_agent_source(str_val).unwrap();
+            assert_eq!(deser, variant, "deserialize {str_val}");
+
+            let ser = Database::serialize_agent_source(&variant);
+            assert_eq!(ser, str_val, "serialize {str_val}");
+        }
+    }
+
+    #[test]
     fn test_list_all_sessions_includes_failed() {
         let db = setup_db();
         let failed = AgentSession {
@@ -643,5 +657,118 @@ mod tests {
         let all = db.list_all_sessions().unwrap();
         assert_eq!(all.len(), 1);
         assert_eq!(all[0].session_id, "sess-F");
+    }
+
+    #[test]
+    fn test_file_based_db_persists_across_reopen() {
+        let dir = std::env::temp_dir().join("agentpulse_test");
+        let _ = std::fs::create_dir_all(&dir);
+        let path = dir.join("test_persist.db");
+
+        // Clean up any previous test run
+        let _ = std::fs::remove_file(&path);
+
+        // Create, write, drop
+        {
+            let db = Database::new(&path).unwrap();
+            let session = AgentSession {
+                session_id: "persist-1".into(),
+                source: AgentSource::ClaudeCode,
+                cwd: "/tmp".into(),
+                project_name: "test".into(),
+                status: AgentStatus::Running,
+                started_at: 1,
+                updated_at: 1,
+                completed_at: None,
+                last_message: None,
+                last_tool_name: None,
+                transcript_path: None,
+                needs_attention: false,
+                pid: None,
+            };
+            db.upsert_session(&session).unwrap();
+        }
+
+        // Reopen and verify data survived
+        {
+            let db = Database::new(&path).unwrap();
+            let sessions = db.list_all_sessions().unwrap();
+            assert_eq!(sessions.len(), 1);
+            assert_eq!(sessions[0].session_id, "persist-1");
+        }
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn test_cleanup_old_sessions_removes_old_completed() {
+        let db = setup_db();
+
+        let now_ms = 1700000000000i64;
+        let seven_days_ms = 7 * 24 * 60 * 60 * 1000i64;
+
+        // Old completed session (older than 7 days)
+        let old = AgentSession {
+            session_id: "old-done".into(),
+            source: AgentSource::ClaudeCode,
+            cwd: "/old".into(),
+            project_name: "old".into(),
+            status: AgentStatus::Completed,
+            started_at: now_ms - seven_days_ms - 1,
+            updated_at: now_ms - seven_days_ms - 1,
+            completed_at: Some(now_ms - seven_days_ms - 1),
+            last_message: None,
+            last_tool_name: None,
+            transcript_path: None,
+            needs_attention: false,
+            pid: None,
+        };
+        db.upsert_session(&old).unwrap();
+
+        // Recent completed session (within 7 days)
+        let recent = AgentSession {
+            session_id: "recent-done".into(),
+            source: AgentSource::ClaudeCode,
+            cwd: "/recent".into(),
+            project_name: "recent".into(),
+            status: AgentStatus::Completed,
+            started_at: now_ms - 1000,
+            updated_at: now_ms - 1000,
+            completed_at: Some(now_ms - 1000),
+            last_message: None,
+            last_tool_name: None,
+            transcript_path: None,
+            needs_attention: false,
+            pid: None,
+        };
+        db.upsert_session(&recent).unwrap();
+
+        // Active session (should never be cleaned)
+        let active = AgentSession {
+            session_id: "active-sess".into(),
+            source: AgentSource::ClaudeCode,
+            cwd: "/active".into(),
+            project_name: "active".into(),
+            status: AgentStatus::Running,
+            started_at: now_ms - seven_days_ms - 1000,
+            updated_at: now_ms,
+            completed_at: None,
+            last_message: None,
+            last_tool_name: None,
+            transcript_path: None,
+            needs_attention: false,
+            pid: None,
+        };
+        db.upsert_session(&active).unwrap();
+
+        let removed = db.cleanup_old_sessions(7, now_ms).unwrap();
+        assert!(removed >= 1, "should have removed at least the old completed session");
+
+        let remaining = db.list_all_sessions().unwrap();
+        let ids: Vec<&str> = remaining.iter().map(|s| s.session_id.as_str()).collect();
+
+        assert!(!ids.contains(&"old-done"), "old completed session should be removed");
+        assert!(ids.contains(&"recent-done"), "recent completed session should remain");
+        assert!(ids.contains(&"active-sess"), "active session should remain");
     }
 }
