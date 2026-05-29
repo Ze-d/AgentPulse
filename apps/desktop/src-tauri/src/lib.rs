@@ -17,6 +17,12 @@ use db::Database;
 pub enum AgentSource {
     #[serde(rename = "claude-code")]
     ClaudeCode,
+    #[serde(rename = "codex")]
+    Codex,
+    #[serde(rename = "gemini")]
+    Gemini,
+    #[serde(rename = "copilot")]
+    Copilot,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -139,6 +145,7 @@ pub fn run() {
             commands::hide_main_window,
         ])
         .setup(|app| {
+
             tray::setup_tray(app)?;
 
             // Intercept window close: minimize to tray with remembered preference

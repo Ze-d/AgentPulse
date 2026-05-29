@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { computed } from "vue";
 import type { AgentSession } from "../types/agent";
-import { STATUS_COLORS, STATUS_LABELS, formatDuration } from "../types/agent";
+import { sourceAbbr } from "../utils/sourceDisplay";
+import { useSessionDisplay } from "../composables/useSessionDisplay";
 
 const props = defineProps<{
   session: AgentSession;
@@ -11,22 +11,19 @@ const emit = defineEmits<{
   click: [sessionId: string];
 }>();
 
-const statusColor = computed(() => STATUS_COLORS[props.session.status]);
-const statusLabel = computed(() => STATUS_LABELS[props.session.status]);
-const duration = computed(() =>
-  formatDuration(props.session.startedAt, props.session.completedAt)
-);
+const { statusColor, statusLabel, duration } = useSessionDisplay(props.session);
 </script>
 
 <template>
   <div
     class="session-card"
+    :class="{ attention: session.needsAttention }"
     :style="{ borderLeftColor: statusColor }"
     @click="emit('click', session.sessionId)"
   >
     <div class="card-row">
-      <span class="project" :style="{ color: statusColor }">
-        {{ session.source === "claude-code" ? "cc" : session.source }} &gt; {{ session.projectName }}
+      <span class="project" :style="{ color: statusColor }" :title="session.projectName">
+        {{ sourceAbbr(session.source) }} &gt; {{ session.projectName }}
       </span>
       <span class="duration">{{ duration }}</span>
       <span class="status" :style="{ color: statusColor }">{{ statusLabel }}</span>
@@ -85,5 +82,19 @@ const duration = computed(() =>
 
 .tool {
   color: var(--color-overlay0);
+}
+
+.session-card.attention {
+  animation: attention-pulse 2s ease-in-out infinite;
+  box-shadow: inset 0 0 8px rgba(250, 179, 135, 0.3);
+}
+
+@keyframes attention-pulse {
+  0%, 100% {
+    box-shadow: inset 0 0 8px rgba(250, 179, 135, 0.3);
+  }
+  50% {
+    box-shadow: inset 0 0 16px rgba(250, 179, 135, 0.6);
+  }
 }
 </style>

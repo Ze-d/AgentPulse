@@ -137,16 +137,6 @@ def _snapshot_processes() -> tuple[dict[int, int], dict[int, str]]:
 
     kernel32.CloseHandle(snapshot)
     return pid_to_parent, pid_to_name
-    """Read hook JSON from stdin. Returns None if empty, exits on parse error."""
-    raw_input = sys.stdin.read().strip()
-    if not raw_input:
-        logger.info("No stdin data, skipping")
-        return None
-    try:
-        return json.loads(raw_input)
-    except json.JSONDecodeError as e:
-        logger.error("Failed to parse stdin as JSON: %s", e)
-        sys.exit(1)
 
 
 def send_event(url: str, data: dict, timeout: int) -> int:
