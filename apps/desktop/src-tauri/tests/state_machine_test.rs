@@ -76,7 +76,9 @@ fn test_failed_wakes_on_new_activity() {
 #[test]
 fn test_needs_attention_flags() {
     assert!(StateMachine::needs_attention(&AgentStatus::WaitingInput));
-    assert!(StateMachine::needs_attention(&AgentStatus::WaitingPermission));
+    assert!(StateMachine::needs_attention(
+        &AgentStatus::WaitingPermission
+    ));
     assert!(StateMachine::needs_attention(&AgentStatus::Completed));
     assert!(StateMachine::needs_attention(&AgentStatus::Failed));
     assert!(!StateMachine::needs_attention(&AgentStatus::Running));
