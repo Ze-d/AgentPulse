@@ -9,7 +9,7 @@
 
 进程存活检测分为两个阶段：
 1. **PID 获取** — `monitor_hook.py` 通过 Windows API 向上遍历进程树获取 CC node.exe 的真实 PID
-2. **PID 存活检测** — `process_checker.rs` 后台线程每 5 秒检查活跃 session 的 PID 是否还存在
+2. **PID 存活检测** — `process_checker.rs` 后台线程定期检查活跃 session 的 PID 是否还存在（间隔可配置，默认 5 秒）
 
 ## 阶段 1: PID 获取（Python 端）
 
@@ -31,11 +31,11 @@ monitor_hook.py 被 CC hook 触发
 ## 阶段 2: 进程存活检测（Rust 端）
 
 ```
-process_checker::start(db: Arc<Mutex<Database>>)
+process_checker::start(db: Arc<Mutex<Database>>, interval_secs: u64)
   │
   └─→ thread::spawn {
         loop {
-          sleep(5 秒)
+          sleep(interval_secs 秒)   // 来自配置，默认 5
           │
           ├─→ 1. db.lock() → db.list_sessions_with_pid()
           │     │

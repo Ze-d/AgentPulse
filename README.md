@@ -6,8 +6,8 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.1.0-blue" alt="version">
-  <img src="https://img.shields.io/badge/platform-Windows-blueviolet" alt="platform">
+  <img src="https://img.shields.io/badge/version-0.4.0-blue" alt="version">
+  <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-blueviolet" alt="platform">
   <img src="https://img.shields.io/badge/license-MIT-green" alt="license">
 </p>
 
@@ -30,20 +30,23 @@ AgentPulse 用一个**桌面悬浮窗**解决这个问题：它通过 Claude Cod
 - **桌面悬浮窗** — 无边框、始终置顶、半透明深色主题（Catppuccin Mocha），自适应高度，可拖拽。终端风格的等宽字体，信息密度高但不干扰正常工作
 - **多会话对应** — 面板卡片数与正在运行的 CC 终端数一一对应。同时跑 3 个 CC 终端，浮窗就显示 3 张卡片
 - **会话完成后保留** — 任务完成后卡片不会立即消失，而是标记为 `[done]` 状态保留在面板中。关闭 CC 终端约 5 秒后卡片自动清理，给你时间确认结果
-- **进程存活检测** — 通过 Windows 进程树遍历获取 CC 真实 PID（node.exe），Rust 后台线程每 5 秒检测 PID 存活状态，进程退出后自动清理对应 session
+- **进程存活检测** — 通过 Windows 进程树遍历获取 CC 真实 PID（node.exe），Rust 后台线程定期检测 PID 存活状态，进程退出后自动清理对应 session
 - **系统托盘** — 关闭窗口最小化到托盘而非退出。首次关闭时询问偏好（托盘/退出），可记住选择。右键托盘菜单可随时退出
 - **规范化状态机** — 从 Starting → Running → ToolRunning → WaitingInput/WaitingPermission → Completed/Failed，以统一模型规范化 CC hook 事件
+- **结构化日志** — tracing 日志输出到 stderr（开发）和 JSON 文件（持久化诊断），支持按模块过滤
+- **可配置化** — 配置文件 `config.json` 管理端口、轮询间隔、Python 解释器，环境变量可覆盖（CI 友好）
 - **本地优先** — SQLite 持久化存储，所有数据在本地。不上传源码，不上传对话记录，不连外网
+- **多源预留** — AgentSource 枚举已支持 Claude Code / Codex / Gemini / Copilot 四种来源
 
 ## 下载安装
 
 ### 方式一：下载安装包（推荐）
 
-从 [GitHub Releases](https://github.com/Kal-zed/AgentPulse/releases) 下载最新版本：
+从 [GitHub Releases](https://github.com/Ze-d/AgentPulse/releases) 下载最新版本：
 
 - **Windows (x64)**: `.msi` 安装包 或 `.exe` 独立安装程序
-- **macOS (x64 / arm64)**: `.dmg`（即将支持）
-- **Linux (x64)**: `.deb` / `.AppImage`（即将支持）
+- **macOS (x64 / arm64)**: `.dmg`
+- **Linux (x64)**: `.deb` / `.AppImage`
 
 下载后双击安装即可。启动 AgentPulse 后，桌面会出现悬浮窗。
 
@@ -59,7 +62,7 @@ AgentPulse 用一个**桌面悬浮窗**解决这个问题：它通过 Claude Cod
 
 ```powershell
 # 克隆仓库
-git clone https://github.com/Kal-zed/AgentPulse.git
+git clone https://github.com/Ze-d/AgentPulse.git
 cd AgentPulse
 
 # 安装前端依赖
@@ -89,10 +92,14 @@ python adapters/claude-code/install_hooks.py --status
 
 这会向 `~/.claude/settings.json` 写入 6 个 hook 事件：SessionStart、PreToolUse、PostToolUse、PostToolUseFailure、Notification、Stop。安装前会自动备份原文件。
 
+AgentPulse 启动时会自动检测并安装 hooks（幂等操作），无需手动执行。
+
 ### 2. 启动 AgentPulse
 
 - 如果下载了安装包：从开始菜单或桌面快捷方式启动
 - 如果从源码启动：`cd apps/desktop && npm run tauri dev`
+
+首次启动会在 `{app_data_dir}/` 下生成 `config.json`，可编辑自定义端口、轮询间隔等。
 
 ### 3. 正常使用 Claude Code
 
@@ -104,28 +111,53 @@ python adapters/claude-code/install_hooks.py --status
 python adapters/claude-code/install_hooks.py --remove
 ```
 
+## 配置
+
+编辑 `{app_data_dir}/com.agentpulse.desktop/config.json`：
+
+```json
+{
+  "port": 17878,
+  "checkIntervalSecs": 5,
+  "python": null,
+  "pollIntervalMs": 2000
+}
+```
+
+| 字段 | 默认值 | 说明 |
+|------|--------|------|
+| `port` | `17878` | HTTP 事件服务器端口 |
+| `checkIntervalSecs` | `5` | 进程存活检查间隔（秒） |
+| `python` | 自动检测 | Python 解释器（`null` = 自动探测 `python3` → `python`） |
+| `pollIntervalMs` | `2000` | 前端轮询间隔（毫秒） |
+
+环境变量 `AGENTPULSE_PORT`、`AGENTPULSE_CHECK_INTERVAL`、`AGENTPULSE_PYTHON`、`AGENTPULSE_POLL_INTERVAL` 可覆盖配置文件。
+
 ## 架构
 
 ```
 Claude Code session 事件
   → ~/.claude/settings.json (hooks 配置)
     → monitor_hook.py (stdin 适配器, 进程树遍历获取 CC PID)
-      → POST /api/events (127.0.0.1:17878)
+      → POST /api/events (127.0.0.1:{port})
         → event_server.rs (规范化 + 状态机)
           → SQLite (持久化)
             → Tauri commands (IPC)
-              → Vue 3 前端 (2s 轮询展示全部 session 卡片)
-        → process_checker.rs (5s 轮询 PID 存活, 自动清理)
+              → Vue 3 前端 (轮询展示全部 session 卡片)
+        → process_checker.rs (轮询 PID 存活, 自动清理)
 ```
 
 | 层 | 技术 |
 |---|------|
 | 桌面壳 | Tauri 2 |
-| 前端 | Vue 3 + TypeScript + Tailwind CSS 4 |
-| 状态管理 | Pinia (2s 轮询) |
-| HTTP 服务 | tiny_http 0.12 (端口 17878) |
-| 数据库 | SQLite (rusqlite 0.31, bundled) |
+| 前端 | Vue 3 + TypeScript + Pinia |
+| 样式 | Catppuccin Mocha 配色 + 等宽字体 |
+| 后端 | Rust (agentpulse_lib) |
+| HTTP 服务 | tiny_http 0.12 (端口可配置，默认 17878) |
+| 数据库 | SQLite (rusqlite 0.31, bundled, 内存 / 文件) |
 | 进程监控 | sysinfo 0.31 (跨平台 PID 存活检测) |
+| 日志 | tracing (stderr 文本 + JSON 文件轮转) |
+| 配置 | config.json + 环境变量覆盖 |
 | 适配器 | Python 3 标准库, 无第三方依赖 |
 
 ## 项目结构
@@ -135,34 +167,40 @@ AgentPulse/
 ├── apps/desktop/                  # Tauri 桌面应用
 │   ├── src/                       # Vue 3 前端
 │   │   ├── components/            # FloatingPanel, SessionCard, ExpandedDetail
-│   │   ├── stores/                # Pinia sessionStore (2s 轮询)
-│   │   └── types/                 # TypeScript 类型定义
+│   │   ├── composables/           # useSessionDisplay
+│   │   ├── stores/                # Pinia sessionStore (轮询)
+│   │   ├── types/                 # TypeScript 类型定义
+│   │   └── utils/                 # ipc, logger, sourceDisplay, openActions
 │   ├── src-tauri/                 # Rust 后端
 │   │   ├── src/
 │   │   │   ├── lib.rs             # 共享类型 + run() 入口
-│   │   │   ├── db.rs              # SQLite CRUD
+│   │   │   ├── config.rs          # 配置文件加载 + 环境变量覆盖
+│   │   │   ├── db.rs              # SQLite CRUD + cleanup
 │   │   │   ├── state_machine.rs   # 状态转换 + needs_attention
-│   │   │   ├── event_server.rs    # HTTP 服务器 :17878
+│   │   │   ├── event_server.rs    # HTTP 服务器 (tiny_http)
 │   │   │   ├── process_checker.rs # 后台进程存活检测
 │   │   │   ├── commands.rs        # Tauri IPC 命令
 │   │   │   ├── hooks.rs           # Hook 配置管理
+│   │   │   ├── logging.rs         # tracing 日志初始化
 │   │   │   ├── tray.rs            # 系统托盘
 │   │   │   └── main.rs            # 二进制入口
 │   │   └── tests/                 # Rust 集成测试
 │   └── tauri.conf.json
 ├── adapters/claude-code/          # Claude Code hook 适配器
 │   ├── install_hooks.py           # 一键安装/卸载/状态/预览
-│   └── monitor_hook.py            # stdin → HTTP 转发, 带重试
+│   └── monitor_hook.py            # stdin → HTTP 转发, 带重试 + PID 探测
 ├── tests/
-│   ├── unit/                      # Python 单元测试
+│   ├── unit/                      # Python 单元测试 (32 个)
 │   └── integration/               # E2E 冒烟测试
 ├── docs/                          # 文档
 │   ├── architecture/              # 架构设计
+│   ├── flows/                     # 功能流程文档 (10 篇)
 │   ├── testing/                   # 测试策略 + TDD 指南
 │   ├── ai/                        # AI 协作规范
 │   ├── superpowers/               # 设计文档 + 实现计划
 │   ├── fixlog/                    # Bug 修复记录
-│   └── todos/                     # 待办事项
+│   ├── todos/                     # 未完成待办
+│   └── workflow/                  # 发布流程
 └── asset/                         # README 截图
 ```
 
@@ -189,7 +227,8 @@ npm run dev
 - 前端代码修改后自动热更新
 - Rust 代码修改后自动重编译
 - 悬浮窗右键 → Inspect 打开 Chrome DevTools
-- 设置 `$env:RUST_LOG = "debug"` 查看 Rust 日志
+- 设置 `$env:RUST_LOG = "debug"` 查看 Rust 详细日志
+- 日志文件位于 `{app_data_dir}/com.agentpulse.desktop/logs/`
 
 ### 模拟事件测试
 
@@ -218,14 +257,17 @@ curl -X POST http://127.0.0.1:17878/api/events `
 ### 运行测试
 
 ```powershell
-# Rust 单元测试
+# Rust 测试 (53 个)
 cd apps/desktop/src-tauri && cargo test
 
 # 前端类型检查
 cd apps/desktop && npx vue-tsc --noEmit
 
-# Python 单元测试
-python -m pytest tests/unit/ -v
+# 前端单元测试
+cd apps/desktop && npm test
+
+# Python 测试 (32 个)
+python -m pytest tests/ -v
 
 # E2E 测试（需 AgentPulse 运行中）
 python tests/integration/test_e2e.py
@@ -267,26 +309,31 @@ npm run tauri build
 
 如果 SessionStart 事件丢失（导致 session 没有 PID），卡片不会被自动清理。重启 AgentPulse 即可清除。正常情况下关闭 CC 终端约 5 秒后卡片自动消失。
 
+**Q: 想改端口怎么办？**
+
+编辑 `{app_data_dir}/com.agentpulse.desktop/config.json`，修改 `port` 字段，重启生效。
+
 ## 文档索引
 
 - [本地开发指南](docs/local-development-guide.md)
 - [架构概述](docs/architecture/overview.md)
 - [组件树](docs/architecture/component-tree.md)
 - [模块边界](docs/architecture/module-boundaries.md)
+- [流程文档](docs/flows/README.md) — 10 篇功能流程
 - [测试策略](docs/testing/testing-strategy.md)
 - [TDD 指南](docs/testing/tdd-guide.md)
 - [代码规范](docs/ai/coding-rules.md)
-- [Context Map](docs/ai/context-map.md)
 - [审查清单](docs/ai/review-checklist.md)
 - [发布流程](docs/workflow/release.md)
 - [Bug 修复记录](docs/fixlog/)
 
 ## 路线图
 
-- [ ] **v0.2** - Codex 集成、对话记录文件解析、历史页面
-- [ ] **v0.3** - 进程树自动扫描、WSL 支持、多项目并行监控
-- [ ] **v1.0** - 插件架构，支持第三方 agent 接入
+- [x] **v0.3** — 跨平台 CI、lint 门控、安全审计、前端测试
+- [x] **v0.4** — 配置系统（config.json）、tracing 结构化日志、流程文档
+- [ ] **v0.5** — Codex / Gemini / Copilot 适配器、对话记录解析
+- [ ] **v1.0** — 插件架构，支持第三方 agent 接入
 
 ## 许可证
 
-MIT © [Kal_zed](https://github.com/Kal-zed)
+MIT © [Kal_zed](https://github.com/Kal_zed)

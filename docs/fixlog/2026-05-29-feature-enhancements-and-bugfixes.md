@@ -1,6 +1,6 @@
 # Fixlog — 2026-05-29
 
-Feature enhancements from [02-feature-enhancements.md](../todos/02-feature-enhancements.md) and bugfixes discovered during implementation.
+Feature enhancements (原 `02-feature-enhancements.md`，已全部完成并归档) and bugfixes discovered during implementation.
 
 ## Fixed Issues
 
