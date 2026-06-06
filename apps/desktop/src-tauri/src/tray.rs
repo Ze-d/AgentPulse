@@ -16,14 +16,17 @@ pub fn setup_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
             "show" => {
                 if let Some(window) = app.get_webview_window("main") {
                     if window.is_visible().unwrap_or(false) {
+                        tracing::trace!("tray: hiding window");
                         let _ = window.hide();
                     } else {
+                        tracing::trace!("tray: showing window");
                         let _ = window.show();
                         let _ = window.set_focus();
                     }
                 }
             }
             "quit" => {
+                tracing::info!("user quit via tray menu");
                 app.exit(0);
             }
             _ => {}
@@ -48,5 +51,6 @@ pub fn setup_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         })
         .build(app)?;
 
+    tracing::info!("system tray initialized");
     Ok(())
 }

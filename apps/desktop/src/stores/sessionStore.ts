@@ -1,6 +1,9 @@
 import { defineStore } from "pinia";
 import type { AgentSession } from "../types/agent";
 import { getSessions } from "../utils/ipc";
+import { createLogger } from "../utils/logger";
+
+const logger = createLogger("SessionStore");
 
 interface SessionState {
   sessions: AgentSession[];
@@ -38,8 +41,9 @@ export const useSessionStore = defineStore("sessions", {
         const result = await getSessions();
         this.sessions = result;
         this.error = null;
+        logger.debug(`fetchSessions: ${result.length} sessions`);
       } catch (e) {
-        console.error("[AgentPulse] fetchSessions error:", e);
+        logger.error("fetchSessions failed", e);
         this.error = String(e);
       } finally {
         this.isLoading = false;
@@ -48,6 +52,7 @@ export const useSessionStore = defineStore("sessions", {
 
     startPolling(intervalMs = 2000) {
       this.stopPolling();
+      logger.debug(`startPolling: interval=${intervalMs}ms`);
       this.fetchSessions();
       this.pollingInterval = window.setInterval(() => {
         this.fetchSessions();
@@ -56,6 +61,7 @@ export const useSessionStore = defineStore("sessions", {
 
     stopPolling() {
       if (this.pollingInterval !== null) {
+        logger.debug("stopPolling");
         clearInterval(this.pollingInterval);
         this.pollingInterval = null;
       }

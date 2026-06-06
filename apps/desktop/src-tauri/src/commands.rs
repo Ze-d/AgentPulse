@@ -13,7 +13,9 @@ pub struct AppState {
 #[tauri::command]
 pub fn get_sessions(state: State<AppState>) -> Result<Vec<AgentSession>, String> {
     let db = state.db.lock().map_err(|e| e.to_string())?;
-    db.list_all_sessions().map_err(|e| e.to_string())
+    let sessions = db.list_all_sessions().map_err(|e| e.to_string())?;
+    tracing::debug!(count = sessions.len(), "get_sessions");
+    Ok(sessions)
 }
 
 #[tauri::command]
@@ -22,7 +24,13 @@ pub fn get_session_detail(
     session_id: String,
 ) -> Result<Option<AgentSession>, String> {
     let db = state.db.lock().map_err(|e| e.to_string())?;
-    db.get_session(&session_id).map_err(|e| e.to_string())
+    let session = db.get_session(&session_id).map_err(|e| e.to_string())?;
+    tracing::debug!(
+        session_id = %session_id,
+        found = session.is_some(),
+        "get_session_detail"
+    );
+    Ok(session)
 }
 
 #[tauri::command]
@@ -31,12 +39,20 @@ pub fn get_session_events(
     session_id: String,
 ) -> Result<Vec<crate::AgentEvent>, String> {
     let db = state.db.lock().map_err(|e| e.to_string())?;
-    db.get_events_for_session(&session_id)
-        .map_err(|e| e.to_string())
+    let events = db
+        .get_events_for_session(&session_id)
+        .map_err(|e| e.to_string())?;
+    tracing::debug!(
+        session_id = %session_id,
+        count = events.len(),
+        "get_session_events"
+    );
+    Ok(events)
 }
 
 #[tauri::command]
 pub fn get_hook_status_cmd(app_handle: tauri::AppHandle) -> Result<HashMap<String, bool>, String> {
+    tracing::debug!("get_hook_status_cmd");
     let settings_path = app_handle
         .path()
         .resolve(".claude/settings.json", tauri::path::BaseDirectory::Home)
@@ -46,6 +62,7 @@ pub fn get_hook_status_cmd(app_handle: tauri::AppHandle) -> Result<HashMap<Strin
 
 #[tauri::command]
 pub fn install_hooks_cmd(app_handle: tauri::AppHandle) -> Result<String, String> {
+    tracing::info!("user triggered hook installation");
     let settings_path = app_handle
         .path()
         .resolve(".claude/settings.json", tauri::path::BaseDirectory::Home)
@@ -64,6 +81,7 @@ pub fn install_hooks_cmd(app_handle: tauri::AppHandle) -> Result<String, String>
 
 #[tauri::command]
 pub fn uninstall_hooks_cmd(app_handle: tauri::AppHandle) -> Result<String, String> {
+    tracing::info!("user triggered hook removal");
     let settings_path = app_handle
         .path()
         .resolve(".claude/settings.json", tauri::path::BaseDirectory::Home)
@@ -73,8 +91,35 @@ pub fn uninstall_hooks_cmd(app_handle: tauri::AppHandle) -> Result<String, Strin
 
 #[tauri::command]
 pub fn hide_main_window(app_handle: tauri::AppHandle) -> Result<(), String> {
+    tracing::trace!("hide_main_window called");
     let window = app_handle
         .get_webview_window("main")
         .ok_or_else(|| "main window not found".to_string())?;
     window.hide().map_err(|e| e.to_string())
+}
+
+/// Receive log events from the frontend and route them through the tracing
+/// subscriber for persistent storage (file) and console output.
+#[tauri::command]
+pub fn log_event(level: String, module: String, message: String, details: Option<String>) {
+    match level.to_lowercase().as_str() {
+        "error" => {
+            if let Some(ref d) = details {
+                tracing::error!(target: &module, details = %d, "{message}");
+            } else {
+                tracing::error!(target: &module, "{message}");
+            }
+        }
+        "warn" => {
+            if let Some(ref d) = details {
+                tracing::warn!(target: &module, details = %d, "{message}");
+            } else {
+                tracing::warn!(target: &module, "{message}");
+            }
+        }
+        "info" => tracing::info!(target: &module, "{message}"),
+        "debug" => tracing::debug!(target: &module, "{message}"),
+        "trace" => tracing::trace!(target: &module, "{message}"),
+        _ => tracing::info!(target: &module, level = %level, "{message}"),
+    }
 }

@@ -9,7 +9,6 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use log;
 use serde_json::{json, Value};
 
 /// The 6 Claude Code hook events that AgentPulse subscribes to.
@@ -33,6 +32,7 @@ const HOOK_EVENTS: [&str; 6] = [
 pub fn find_monitor_script(resource_dir: &Path) -> Result<PathBuf, String> {
     let bundled = resource_dir.join("monitor_hook.py");
     if bundled.exists() {
+        tracing::debug!(path = %bundled.display(), "monitor script found in resource dir");
         return Ok(bundled);
     }
 
@@ -46,6 +46,7 @@ pub fn find_monitor_script(resource_dir: &Path) -> Result<PathBuf, String> {
         .join("claude-code")
         .join("monitor_hook.py");
     if dev_path.exists() {
+        tracing::debug!(path = %dev_path.display(), "monitor script found in dev path");
         return Ok(dev_path);
     }
 
@@ -78,7 +79,7 @@ pub fn extract_monitor_script(resource_dir: &Path, app_data_dir: &Path) -> Resul
 
     if should_copy {
         fs::copy(&src, &dst).map_err(|e| format!("copy monitor_hook.py: {e}"))?;
-        log::info!("monitor_hook.py extracted to {}", dst.display());
+        tracing::info!(src = %src.display(), dst = %dst.display(), "monitor_hook.py extracted");
     }
 
     Ok(dst)
@@ -113,7 +114,11 @@ fn build_hook_configs(monitor_script: &str) -> Value {
 fn load_settings(path: &Path) -> Value {
     match fs::read_to_string(path) {
         Ok(s) => serde_json::from_str(&s).unwrap_or_else(|e| {
-            log::warn!("Failed to parse {}: {e}, treating as empty", path.display());
+            tracing::warn!(
+                path = %path.display(),
+                error = %e,
+                "failed to parse settings.json, treating as empty"
+            );
             json!({})
         }),
         Err(_) => json!({}),
@@ -125,7 +130,8 @@ fn save_settings(path: &Path, data: &Value) -> Result<(), String> {
         fs::create_dir_all(parent).map_err(|e| format!("create dir {}: {e}", parent.display()))?;
     }
     let json_str = serde_json::to_string_pretty(data).map_err(|e| format!("serialize: {e}"))?;
-    fs::write(path, json_str).map_err(|e| format!("write {}: {e}", path.display()))?;
+    fs::write(path, &json_str).map_err(|e| format!("write {}: {e}", path.display()))?;
+    tracing::debug!(path = %path.display(), len = json_str.len(), "settings saved");
     Ok(())
 }
 
@@ -133,7 +139,12 @@ fn backup_settings(path: &Path) {
     if path.exists() {
         let bak = path.with_extension("json.bak");
         if let Err(e) = fs::copy(path, &bak) {
-            log::warn!("Failed to backup settings.json: {e}");
+            tracing::warn!(
+                path = %path.display(),
+                backup = %bak.display(),
+                error = %e,
+                "failed to backup settings.json"
+            );
         }
     }
 }
@@ -199,10 +210,10 @@ pub fn ensure_hooks_installed(
 
     let had_any = HOOK_EVENTS.iter().any(|e| existing_hooks.get(e).is_some());
     if had_any {
-        log::info!("AgentPulse hooks updated (path changed)");
+        tracing::info!(path = %settings_path.display(), "AgentPulse hooks updated (path changed)");
         Ok("updated".to_string())
     } else {
-        log::info!("AgentPulse hooks installed to {}", settings_path.display());
+        tracing::info!(path = %settings_path.display(), "AgentPulse hooks installed");
         Ok("installed".to_string())
     }
 }

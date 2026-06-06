@@ -14,7 +14,7 @@ impl StateMachine {
     }
 
     pub fn transition(&self, current: AgentStatus, event_type: &EventType) -> AgentStatus {
-        match (current.clone(), event_type) {
+        let next = match (current.clone(), event_type) {
             // Session start
             (_, EventType::SessionStart) => AgentStatus::Starting,
 
@@ -43,7 +43,14 @@ impl StateMachine {
 
             // Default: keep current status
             _ => current,
-        }
+        };
+        tracing::trace!(
+            from = ?current,
+            event = ?event_type,
+            to = ?next,
+            "state transition"
+        );
+        next
     }
 
     pub fn needs_attention(status: &AgentStatus) -> bool {

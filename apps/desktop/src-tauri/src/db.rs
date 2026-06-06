@@ -142,6 +142,12 @@ impl Database {
     // ------------------------------------------------------------------
 
     pub fn upsert_session(&self, session: &AgentSession) -> Result<()> {
+        tracing::trace!(
+            session_id = %session.session_id,
+            status = ?session.status,
+            pid = session.pid,
+            "upsert_session"
+        );
         self.conn.execute(
             "INSERT INTO sessions
                 (session_id, source, cwd, project_name, status, started_at,
@@ -181,6 +187,7 @@ impl Database {
     }
 
     pub fn get_session(&self, session_id: &str) -> Result<Option<AgentSession>> {
+        tracing::trace!(session_id = %session_id, "get_session");
         let mut stmt = self.conn.prepare(
             "SELECT session_id, source, cwd, project_name, status, started_at,
                     updated_at, completed_at, last_message, last_tool_name,
@@ -203,6 +210,12 @@ impl Database {
     // ------------------------------------------------------------------
 
     pub fn insert_event(&self, event: &AgentEvent) -> Result<()> {
+        tracing::trace!(
+            event_id = %event.id,
+            session_id = %event.session_id,
+            event_type = ?event.event_type,
+            "insert_event"
+        );
         self.conn.execute(
             "INSERT INTO events
                 (id, source, session_id, cwd, project_name, event_type,
@@ -287,6 +300,7 @@ impl Database {
     }
 
     pub fn delete_session(&self, session_id: &str) -> Result<()> {
+        tracing::debug!(session_id = %session_id, "delete_session");
         self.conn.execute(
             "DELETE FROM events WHERE session_id = ?1",
             params![session_id],
@@ -318,6 +332,7 @@ impl Database {
     }
 
     pub fn cleanup_old_sessions(&self, retain_days: u32, now_ms: i64) -> Result<usize> {
+        tracing::info!(retain_days = retain_days, "cleanup_old_sessions starting");
         let cutoff = now_ms - (retain_days as i64 * 24 * 60 * 60 * 1000);
         let mut stmt = self.conn.prepare(
             "DELETE FROM events WHERE session_id IN (
@@ -334,6 +349,12 @@ impl Database {
                AND updated_at < ?",
         )?;
         let removed = stmt.execute(params![cutoff])?;
+        tracing::info!(
+            removed = removed,
+            cutoff_ms = cutoff,
+            "cleanup_old_sessions: removed {} sessions",
+            removed
+        );
         Ok(removed)
     }
 }

@@ -3,9 +3,12 @@ import { ref, watch, onMounted, onUnmounted } from "vue";
 import { useSessionStore } from "../stores/sessionStore";
 import { getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
 import { hideMainWindow } from "../utils/ipc";
+import { createLogger } from "../utils/logger";
 import SessionCard from "./SessionCard.vue";
 import ExpandedDetail from "./ExpandedDetail.vue";
 import { openDirectory, openTranscript } from "../utils/openActions";
+
+const logger = createLogger("FloatingPanel");
 
 const HEADER_HEIGHT = 28;
 const CARD_HEIGHT = 34;
@@ -30,8 +33,9 @@ async function handleOpenDir(cwd: string) {
   try {
     await openDirectory(cwd);
     store.error = null;
+    logger.info(`opened directory: ${cwd}`);
   } catch (e) {
-    console.error("[AgentPulse] Failed to open dir:", e);
+    logger.error("failed to open directory", e);
     store.error = String(e);
   }
 }
@@ -40,22 +44,24 @@ async function handleOpenTranscript(path: string) {
   try {
     await openTranscript(path);
     store.error = null;
+    logger.info(`opened transcript: ${path}`);
   } catch (e) {
-    console.error("[AgentPulse] Failed to open transcript:", e);
+    logger.error("failed to open transcript", e);
     store.error = String(e);
   }
 }
 
 function handleCloseMousedown() {
-  console.log("[AgentPulse] mousedown on close button");
+  logger.debug("mousedown on close button");
 }
 
 async function handleClose() {
   closeClicked.value = true;
   try {
     await hideMainWindow();
+    logger.debug("window hidden to tray");
   } catch (e) {
-    console.error("[AgentPulse] invoke hide_main_window failed:", e);
+    logger.error("hide_main_window failed", e);
   }
   closeClicked.value = false;
 }

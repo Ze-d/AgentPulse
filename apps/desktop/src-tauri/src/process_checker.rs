@@ -34,20 +34,30 @@ pub fn start(db: Arc<Mutex<Database>>) {
             let sessions = {
                 let d = match db.lock() {
                     Ok(d) => d,
-                    Err(_) => continue,
+                    Err(_) => {
+                        tracing::warn!("process_checker: DB lock poisoned, skipping cycle");
+                        continue;
+                    }
                 };
                 match d.list_sessions_with_pid() {
                     Ok(s) => s,
                     Err(e) => {
-                        log::error!("process_checker: list sessions: {e}");
+                        tracing::error!(error = %e, "process_checker: failed to list sessions");
                         continue;
                     }
                 }
             };
 
             if sessions.is_empty() {
+                tracing::trace!("process_checker: no sessions with PIDs to check");
                 continue;
             }
+
+            tracing::trace!(
+                count = sessions.len(),
+                "process_checker: checking {} sessions",
+                sessions.len()
+            );
 
             system.refresh_processes(ProcessesToUpdate::All);
 
@@ -62,17 +72,25 @@ pub fn start(db: Arc<Mutex<Database>>) {
                 let alive = system.process(Pid::from(pid as usize)).is_some();
 
                 if !alive {
-                    log::info!(
-                        "process_checker: PID {} gone, removing session {}",
-                        pid,
-                        session.session_id
+                    tracing::info!(
+                        pid = pid,
+                        session_id = %session.session_id,
+                        status = ?session.status,
+                        "process_checker: PID gone, removing session"
                     );
                     let d = match db.lock() {
                         Ok(d) => d,
-                        Err(_) => continue,
+                        Err(_) => {
+                            tracing::warn!("process_checker: DB lock poisoned during delete");
+                            continue;
+                        }
                     };
                     if let Err(e) = d.delete_session(&session.session_id) {
-                        log::error!("process_checker: delete session: {e}");
+                        tracing::error!(
+                            error = %e,
+                            session_id = %session.session_id,
+                            "process_checker: failed to delete session"
+                        );
                     }
                 }
             }

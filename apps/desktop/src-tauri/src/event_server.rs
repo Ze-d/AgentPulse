@@ -225,7 +225,7 @@ impl EventServer {
             for mut request in server.incoming_requests() {
                 // Bug 1.6: check shutdown flag to allow graceful stop
                 if event_server.shutdown.load(Ordering::Relaxed) {
-                    log::info!("event_server: shutdown signaled, stopping");
+                    tracing::info!("event_server: shutdown signaled, stopping accept loop");
                     break;
                 }
 
@@ -238,34 +238,60 @@ impl EventServer {
                         let body_ok = request.as_reader().read_to_string(&mut body).is_ok();
 
                         if !body_ok {
+                            tracing::warn!("event_server: failed to read request body");
                             json_response(400, &serde_json::json!({"error": "failed to read body"}))
                         } else {
                             match serde_json::from_str::<serde_json::Value>(&body) {
                                 Ok(json) => match event_server.handle_event(&json) {
-                                    Ok((event, session)) => json_response(
-                                        201,
-                                        &serde_json::json!({"event": event, "session": session}),
-                                    ),
+                                    Ok((event, session)) => {
+                                        tracing::info!(
+                                            session_id = %event.session_id,
+                                            event_type = ?event.event_type,
+                                            status = ?session.status,
+                                            "event processed"
+                                        );
+                                        json_response(
+                                            201,
+                                            &serde_json::json!({"event": event, "session": session}),
+                                        )
+                                    }
                                     Err(e) => {
-                                        // Bug 1.5: log server-side error for debugging
-                                        log::error!("event_server: handle_event: {}", e);
+                                        tracing::error!(
+                                            error = %e,
+                                            "event_server: handle_event failed"
+                                        );
                                         json_response(500, &serde_json::json!({"error": e}))
                                     }
                                 },
-                                Err(e) => json_response(
-                                    400,
-                                    &serde_json::json!({"error": format!("invalid JSON: {}", e)}),
-                                ),
+                                Err(e) => {
+                                    tracing::warn!(
+                                        error = %e,
+                                        body_len = body.len(),
+                                        "event_server: invalid JSON body"
+                                    );
+                                    json_response(
+                                        400,
+                                        &serde_json::json!({"error": format!("invalid JSON: {}", e)}),
+                                    )
+                                }
                             }
                         }
                     }
                     ("GET", "/api/sessions") => {
-                        // Bug 1.3: handle poisoned Mutex gracefully
                         match event_server.db.lock() {
                             Ok(db) => match db.list_all_sessions() {
-                                Ok(sessions) => json_response(200, &serde_json::json!(sessions)),
+                                Ok(sessions) => {
+                                    tracing::debug!(
+                                        count = sessions.len(),
+                                        "GET /api/sessions"
+                                    );
+                                    json_response(200, &serde_json::json!(sessions))
+                                }
                                 Err(e) => {
-                                    log::error!("event_server: db list_sessions: {}", e);
+                                    tracing::error!(
+                                        error = %e,
+                                        "event_server: db list_sessions failed"
+                                    );
                                     json_response(
                                         500,
                                         &serde_json::json!({"error": format!("db error: {}", e)}),
@@ -273,7 +299,10 @@ impl EventServer {
                                 }
                             },
                             Err(e) => {
-                                log::error!("event_server: lock poisoned: {}", e);
+                                tracing::error!(
+                                    error = %e,
+                                    "event_server: db lock poisoned on GET /api/sessions"
+                                );
                                 json_response(
                                     500,
                                     &serde_json::json!({"error": "internal server error"}),
@@ -284,7 +313,14 @@ impl EventServer {
                     ("GET", "/api/health") => {
                         json_response(200, &serde_json::json!({"status": "ok"}))
                     }
-                    _ => json_response(404, &serde_json::json!({"error": "not found"})),
+                    _ => {
+                        tracing::debug!(
+                            method = %method,
+                            url = %url,
+                            "event_server: unknown route"
+                        );
+                        json_response(404, &serde_json::json!({"error": "not found"}))
+                    }
                 };
 
                 let _ = request.respond(response);
