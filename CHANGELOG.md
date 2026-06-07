@@ -5,6 +5,31 @@ All notable changes to AgentPulse will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-06-07
+
+### Added
+- Configuration file support (`config.json`) with env var overrides
+  - Configurable HTTP port, process check interval, Python interpreter, poll interval
+  - Auto-generates default config on first launch
+  - Environment variables as secondary overrides for CI/container use
+- Structured logging via `tracing` (console + JSON file output with rotation)
+- `get_config` Tauri command for frontend to read runtime config
+- Detailed flow documentation (10 docs covering startup, hooks, events, sessions, etc.)
+- Config module tests (5 unit tests)
+
+### Changed
+- `process_checker::start()` accepts configurable interval parameter
+- `hooks::ensure_hooks_installed()` accepts Python interpreter parameter
+- `resolve_python()` supports config hint + auto-detect fallback
+- All todo files verified and updated with completion status (34/51 items done)
+
+### Fixed
+- CSP security policy in tauri.conf.json (was null, now strict)
+- DB deserialize panics replaced with proper error types
+- Event server lock poisoning handled gracefully
+- process_pid now persists correctly through DB round-trip
+- Event server error logging and graceful shutdown
+
 ## [0.3.0] - 2026-05-29
 
 ### Added
