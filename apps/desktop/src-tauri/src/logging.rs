@@ -80,8 +80,7 @@ pub fn default_app_data_dir() -> PathBuf {
 /// losing any buffered log messages.
 pub fn init(log_dir: Option<&Path>) -> WorkerGuard {
     // Build filter: default to info, allow override via RUST_LOG.
-    let filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new("info"));
+    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
 
     // Console layer — compact, human-readable, color in debug builds.
     let console_layer = fmt::layer()
@@ -145,9 +144,7 @@ pub fn init(log_dir: Option<&Path>) -> WorkerGuard {
 /// determined by the last modification time. If the modification time
 /// cannot be read, the file is kept (conservative).
 fn cleanup_stale_logs(dir: &Path) {
-    let now = match std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-    {
+    let now = match std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH) {
         Ok(d) => d.as_secs(),
         Err(_) => {
             eprintln!("[AgentPulse] system clock is before UNIX epoch, skipping log cleanup");
@@ -187,7 +184,10 @@ fn cleanup_stale_logs(dir: &Path) {
 
         if is_stale {
             if let Err(e) = fs::remove_file(&path) {
-                eprintln!("[AgentPulse] failed to remove stale log {}: {e}", path.display());
+                eprintln!(
+                    "[AgentPulse] failed to remove stale log {}: {e}",
+                    path.display()
+                );
             }
         }
     }

@@ -277,39 +277,34 @@ impl EventServer {
                             }
                         }
                     }
-                    ("GET", "/api/sessions") => {
-                        match event_server.db.lock() {
-                            Ok(db) => match db.list_all_sessions() {
-                                Ok(sessions) => {
-                                    tracing::debug!(
-                                        count = sessions.len(),
-                                        "GET /api/sessions"
-                                    );
-                                    json_response(200, &serde_json::json!(sessions))
-                                }
-                                Err(e) => {
-                                    tracing::error!(
-                                        error = %e,
-                                        "event_server: db list_sessions failed"
-                                    );
-                                    json_response(
-                                        500,
-                                        &serde_json::json!({"error": format!("db error: {}", e)}),
-                                    )
-                                }
-                            },
+                    ("GET", "/api/sessions") => match event_server.db.lock() {
+                        Ok(db) => match db.list_all_sessions() {
+                            Ok(sessions) => {
+                                tracing::debug!(count = sessions.len(), "GET /api/sessions");
+                                json_response(200, &serde_json::json!(sessions))
+                            }
                             Err(e) => {
                                 tracing::error!(
                                     error = %e,
-                                    "event_server: db lock poisoned on GET /api/sessions"
+                                    "event_server: db list_sessions failed"
                                 );
                                 json_response(
                                     500,
-                                    &serde_json::json!({"error": "internal server error"}),
+                                    &serde_json::json!({"error": format!("db error: {}", e)}),
                                 )
                             }
+                        },
+                        Err(e) => {
+                            tracing::error!(
+                                error = %e,
+                                "event_server: db lock poisoned on GET /api/sessions"
+                            );
+                            json_response(
+                                500,
+                                &serde_json::json!({"error": "internal server error"}),
+                            )
                         }
-                    }
+                    },
                     ("GET", "/api/health") => {
                         json_response(200, &serde_json::json!({"status": "ok"}))
                     }

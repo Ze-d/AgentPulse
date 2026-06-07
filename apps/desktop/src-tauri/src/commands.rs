@@ -71,7 +71,10 @@ pub fn get_hook_status_cmd(app_handle: tauri::AppHandle) -> Result<HashMap<Strin
 }
 
 #[tauri::command]
-pub fn install_hooks_cmd(app_handle: tauri::AppHandle, state: State<AppState>) -> Result<String, String> {
+pub fn install_hooks_cmd(
+    app_handle: tauri::AppHandle,
+    state: State<AppState>,
+) -> Result<String, String> {
     tracing::info!("user triggered hook installation");
     let settings_path = app_handle
         .path()

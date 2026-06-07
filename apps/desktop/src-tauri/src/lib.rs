@@ -125,10 +125,7 @@ pub fn run() {
     let log_dir = app_data_dir.join("logs");
     let _log_guard = logging::init(Some(&log_dir));
 
-    tracing::info!(
-        version = env!("CARGO_PKG_VERSION"),
-        "AgentPulse starting"
-    );
+    tracing::info!(version = env!("CARGO_PKG_VERSION"), "AgentPulse starting");
 
     let config = AgentPulseConfig::load(&app_data_dir);
     tracing::info!(
@@ -151,7 +148,10 @@ pub fn run() {
     tracing::debug!(port = config.port, "event server thread spawned");
 
     process_checker::start(db.clone(), config.check_interval_secs);
-    tracing::debug!(interval_secs = config.check_interval_secs, "process checker thread spawned");
+    tracing::debug!(
+        interval_secs = config.check_interval_secs,
+        "process checker thread spawned"
+    );
 
     let python_for_hooks = hooks::resolve_python(config.python.as_deref());
     tauri::Builder::default()
