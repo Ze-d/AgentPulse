@@ -13,6 +13,19 @@ export async function getSessions(): Promise<AgentSession[]> {
   }
 }
 
+export interface FrontendConfig {
+  pollIntervalMs: number;
+}
+
+export async function getConfig(): Promise<FrontendConfig> {
+  try {
+    return await invoke<FrontendConfig>("get_config");
+  } catch (e) {
+    logger.warn("get_config IPC failed, using defaults", e);
+    return { pollIntervalMs: 2000 };
+  }
+}
+
 export async function hideMainWindow(): Promise<void> {
   try {
     await invoke("hide_main_window");

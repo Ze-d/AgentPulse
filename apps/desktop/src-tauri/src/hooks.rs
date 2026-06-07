@@ -89,10 +89,35 @@ pub fn extract_monitor_script(resource_dir: &Path, app_data_dir: &Path) -> Resul
 // Build hook configs
 // ---------------------------------------------------------------------------
 
+/// Resolve the Python interpreter to use in hook commands.
+///
+/// When `hint` is `Some`, it is used directly (from config or env override).
+/// Otherwise probes `python3`, then falls back to `python`. On Windows,
+/// `python3` typically doesn't exist so the fallback handles it naturally.
+pub(crate) fn resolve_python(hint: Option<&str>) -> String {
+    if let Some(p) = hint {
+        tracing::debug!(python = %p, "using python from config");
+        return p.to_string();
+    }
+    for candidate in &["python3", "python"] {
+        if std::process::Command::new(candidate)
+            .arg("--version")
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false)
+        {
+            tracing::debug!(python = candidate, "resolved python interpreter");
+            return candidate.to_string();
+        }
+    }
+    tracing::debug!("python interpreter not found, defaulting to 'python'");
+    "python".to_string()
+}
+
 /// Build the `hooks` object for all 6 events pointing at `monitor_script`.
-fn build_hook_configs(monitor_script: &str) -> Value {
+fn build_hook_configs(monitor_script: &str, python: &str) -> Value {
     let mut hooks = serde_json::Map::new();
-    let command = format!("python \"{monitor_script}\"");
+    let command = format!("{python} \"{monitor_script}\"");
 
     for event in &HOOK_EVENTS {
         let entry = json!([{
@@ -162,10 +187,11 @@ fn backup_settings(path: &Path) {
 pub fn ensure_hooks_installed(
     settings_path: &Path,
     monitor_script: &str,
+    python: &str,
 ) -> Result<String, String> {
     let settings = load_settings(settings_path);
     let existing_hooks = settings.get("hooks").cloned().unwrap_or(json!({}));
-    let our_config = build_hook_configs(monitor_script);
+    let our_config = build_hook_configs(monitor_script, python);
 
     // Check whether all 6 events already have the correct command path.
     let mut all_ok = true;
@@ -270,7 +296,7 @@ mod tests {
 
     #[test]
     fn test_build_hook_configs_has_all_events() {
-        let config = build_hook_configs("/tmp/monitor_hook.py");
+        let config = build_hook_configs("/tmp/monitor_hook.py", "python");
         for event in &HOOK_EVENTS {
             assert!(
                 config.get(event).is_some(),
@@ -281,7 +307,7 @@ mod tests {
 
     #[test]
     fn test_build_hook_configs_contains_command() {
-        let config = build_hook_configs("C:\\app\\monitor_hook.py");
+        let config = build_hook_configs("C:\\app\\monitor_hook.py", "python");
         let session_start = &config["SessionStart"][0]["hooks"][0]["command"];
         let cmd = session_start.as_str().unwrap();
         assert!(cmd.contains("python"), "expected python in command");
@@ -294,7 +320,7 @@ mod tests {
         let settings_path = temp_settings_path(&dir);
         let monitor_script = "/app/monitor_hook.py";
 
-        let result = ensure_hooks_installed(&settings_path, monitor_script);
+        let result = ensure_hooks_installed(&settings_path, monitor_script, "python");
         assert!(result.is_ok());
         let status = result.unwrap();
         assert_eq!(status, "installed");
@@ -312,12 +338,12 @@ mod tests {
 
         // First call installs.
         assert_eq!(
-            ensure_hooks_installed(&settings_path, monitor_script).unwrap(),
+            ensure_hooks_installed(&settings_path, monitor_script, "python").unwrap(),
             "installed"
         );
         // Second call is no-op.
         assert_eq!(
-            ensure_hooks_installed(&settings_path, monitor_script).unwrap(),
+            ensure_hooks_installed(&settings_path, monitor_script, "python").unwrap(),
             "already_ok"
         );
     }
@@ -337,7 +363,7 @@ mod tests {
         });
         save_settings(&settings_path, &existing).unwrap();
 
-        let result = ensure_hooks_installed(&settings_path, "/app/monitor_hook.py");
+        let result = ensure_hooks_installed(&settings_path, "/app/monitor_hook.py", "python");
         assert!(result.is_ok());
 
         let settings = load_settings(&settings_path);
@@ -354,10 +380,10 @@ mod tests {
         let settings_path = temp_settings_path(&dir);
 
         // Install with old path.
-        ensure_hooks_installed(&settings_path, "/old/path/monitor_hook.py").unwrap();
+        ensure_hooks_installed(&settings_path, "/old/path/monitor_hook.py", "python").unwrap();
 
         // Now call with new path — should update.
-        let result = ensure_hooks_installed(&settings_path, "/new/path/monitor_hook.py");
+        let result = ensure_hooks_installed(&settings_path, "/new/path/monitor_hook.py", "python");
         assert_eq!(result.unwrap(), "updated");
 
         let settings = load_settings(&settings_path);
@@ -376,7 +402,7 @@ mod tests {
         });
         save_settings(&settings_path, &existing).unwrap();
 
-        ensure_hooks_installed(&settings_path, "/app/monitor_hook.py").unwrap();
+        ensure_hooks_installed(&settings_path, "/app/monitor_hook.py", "python").unwrap();
 
         let settings = load_settings(&settings_path);
         assert_eq!(settings["model"], "claude-sonnet-4-6");
@@ -436,7 +462,7 @@ mod tests {
         }
 
         // After install — all true.
-        ensure_hooks_installed(&settings_path, "/app/monitor_hook.py").unwrap();
+        ensure_hooks_installed(&settings_path, "/app/monitor_hook.py", "python").unwrap();
         let status = get_hook_status(&settings_path).unwrap();
         for v in status.values() {
             assert!(v);
@@ -450,7 +476,7 @@ mod tests {
         let bak_path = settings_path.with_extension("json.bak");
 
         // No backup if file didn't exist.
-        ensure_hooks_installed(&settings_path, "/app/monitor_hook.py").unwrap();
+        ensure_hooks_installed(&settings_path, "/app/monitor_hook.py", "python").unwrap();
         assert!(!bak_path.exists(), "backup should not exist for new file");
 
         // Simulate update — backup should be created.
@@ -463,7 +489,7 @@ mod tests {
         });
         save_settings(&settings_path, &existing).unwrap();
 
-        ensure_hooks_installed(&settings_path, "/new/monitor_hook.py").unwrap();
+        ensure_hooks_installed(&settings_path, "/new/monitor_hook.py", "python").unwrap();
         assert!(bak_path.exists(), "backup should exist after update");
     }
 }

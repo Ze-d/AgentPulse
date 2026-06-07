@@ -14,7 +14,8 @@ impl StateMachine {
     }
 
     pub fn transition(&self, current: AgentStatus, event_type: &EventType) -> AgentStatus {
-        let next = match (current.clone(), event_type) {
+        let from = current.clone();
+        let next = match (current, event_type) {
             // Session start
             (_, EventType::SessionStart) => AgentStatus::Starting,
 
@@ -42,10 +43,10 @@ impl StateMachine {
             (AgentStatus::Failed, _) => AgentStatus::Running,
 
             // Default: keep current status
-            _ => current,
+            _ => from.clone(),
         };
         tracing::trace!(
-            from = ?current,
+            from = ?from,
             event = ?event_type,
             to = ?next,
             "state transition"

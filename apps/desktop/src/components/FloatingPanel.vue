@@ -2,7 +2,7 @@
 import { ref, watch, onMounted, onUnmounted } from "vue";
 import { useSessionStore } from "../stores/sessionStore";
 import { getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
-import { hideMainWindow } from "../utils/ipc";
+import { hideMainWindow, getConfig } from "../utils/ipc";
 import { createLogger } from "../utils/logger";
 import SessionCard from "./SessionCard.vue";
 import ExpandedDetail from "./ExpandedDetail.vue";
@@ -13,12 +13,14 @@ const logger = createLogger("FloatingPanel");
 const HEADER_HEIGHT = 28;
 const CARD_HEIGHT = 34;
 const PANEL_PADDING = 20;
+const DEFAULT_POLL_INTERVAL = 2000;
 
 const store = useSessionStore();
 const closeClicked = ref(false);
 
-onMounted(() => {
-  store.startPolling(2000);
+onMounted(async () => {
+  const config = await getConfig();
+  store.startPolling(config.pollIntervalMs || DEFAULT_POLL_INTERVAL);
 });
 
 onUnmounted(() => {

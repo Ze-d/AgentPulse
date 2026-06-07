@@ -25,11 +25,14 @@ fn is_active_status(status: &AgentStatus) -> bool {
 ///
 /// Sessions in terminal states (Completed, Failed) are left untouched — they
 /// will be cleaned up later by the retention-based cleanup.
-pub fn start(db: Arc<Mutex<Database>>) {
+pub fn start(db: Arc<Mutex<Database>>, interval_secs: u64) {
+    let interval = Duration::from_secs(interval_secs);
+    tracing::debug!(interval_secs, "process checker started");
+
     thread::spawn(move || {
         let mut system = System::new();
         loop {
-            thread::sleep(Duration::from_secs(5));
+            thread::sleep(interval);
 
             let sessions = {
                 let d = match db.lock() {

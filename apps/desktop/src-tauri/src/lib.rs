@@ -1,4 +1,5 @@
 pub mod commands;
+pub mod config;
 pub mod db;
 pub mod event_server;
 pub mod hooks;
@@ -7,6 +8,7 @@ pub mod process_checker;
 pub mod state_machine;
 pub mod tray;
 
+use config::AgentPulseConfig;
 use db::Database;
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
@@ -119,7 +121,8 @@ fn write_close_preference(path: &std::path::Path, action: &str) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let log_dir = logging::default_app_data_dir().join("logs");
+    let app_data_dir = logging::default_app_data_dir();
+    let log_dir = app_data_dir.join("logs");
     let _log_guard = logging::init(Some(&log_dir));
 
     tracing::info!(
@@ -127,24 +130,38 @@ pub fn run() {
         "AgentPulse starting"
     );
 
+    let config = AgentPulseConfig::load(&app_data_dir);
+    tracing::info!(
+        port = config.port,
+        check_interval_secs = config.check_interval_secs,
+        poll_interval_ms = config.poll_interval_ms,
+        python = config.python,
+        "configuration loaded"
+    );
+
     let database = Database::new_in_memory().expect("Failed to initialize database");
     tracing::debug!("database initialized in-memory");
     let db = Arc::new(Mutex::new(database));
 
     let db_for_server = db.clone();
+    let addr = format!("127.0.0.1:{}", config.port);
     std::thread::spawn(move || {
-        let _ = event_server::EventServer::start_shared(db_for_server, "127.0.0.1:17878");
+        let _ = event_server::EventServer::start_shared(db_for_server, &addr);
     });
-    tracing::debug!("event server thread spawned on 127.0.0.1:17878");
+    tracing::debug!(port = config.port, "event server thread spawned");
 
-    process_checker::start(db.clone());
-    tracing::debug!("process checker thread spawned (5s interval)");
+    process_checker::start(db.clone(), config.check_interval_secs);
+    tracing::debug!(interval_secs = config.check_interval_secs, "process checker thread spawned");
 
+    let python_for_hooks = hooks::resolve_python(config.python.as_deref());
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
-        .manage(commands::AppState { db: db.clone() })
+        .manage(commands::AppState {
+            db: db.clone(),
+            config: config.clone(),
+        })
         .invoke_handler(tauri::generate_handler![
             commands::get_sessions,
             commands::get_session_detail,
@@ -154,8 +171,9 @@ pub fn run() {
             commands::uninstall_hooks_cmd,
             commands::hide_main_window,
             commands::log_event,
+            commands::get_config,
         ])
-        .setup(|app| {
+        .setup(move |app| {
             tray::setup_tray(app)?;
 
             // Intercept window close: minimize to tray with remembered preference
@@ -235,6 +253,7 @@ pub fn run() {
 
             // Ensure hooks are installed on every launch (idempotent).
             let app_handle = app.handle().clone();
+            let python = python_for_hooks;
             std::thread::spawn(move || {
                 let resource_dir = match app_handle.path().resource_dir() {
                     Ok(d) => d,
@@ -266,6 +285,7 @@ pub fn run() {
                         match hooks::ensure_hooks_installed(
                             &settings_path,
                             &monitor_path.to_string_lossy(),
+                            &python,
                         ) {
                             Ok(status) => tracing::info!(status = %status, "AgentPulse hooks"),
                             Err(e) => tracing::error!(error = %e, "failed to ensure hooks installed"),

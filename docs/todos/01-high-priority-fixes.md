@@ -1,16 +1,48 @@
-# TODO: 高优先级修复
+# ~~TODO: 高优先级修复~~ ✅ 全部完成
 
-> 生产就绪的阻断性问题：安全漏洞、数据丢失、可触发 panic
+> 状态：**全部完成** — 7/7 项已修复（验证日期: 2026-06-07）
 
 ---
 
-## 1.1 CSP 安全策略缺失 🔴
+## 1.1 CSP 安全策略缺失 ✅
 
-**问题**: `tauri.conf.json` 中 `"csp": null`，前端无任何脚本注入防护。若 hook 事件中的 `message`、`cwd` 等字段被恶意构造并渲染到 WebView，存在 XSS 风险。
+**已完成**: `tauri.conf.json` L31 已设置严格 CSP: `default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self' http://127.0.0.1:17878`
 
-**文件**: [apps/desktop/src-tauri/tauri.conf.json](../../apps/desktop/src-tauri/tauri.conf.json)
+---
 
-**建议**: 定义严格的 CSP，至少设为 `"default-src 'self'; style-src 'self' 'unsafe-inline'"`。
+## 1.2 DB 反序列化 panic ✅
+
+**已完成**: `db.rs` L99-112 三个 `deserialize_*` 函数改为返回 `Result<T, String>`，`unwrap()` 已替换为 `map_err`。测试 L624-629 显式验证 corrupt 值不 panic。
+
+---
+
+## 1.3 Event Server 锁强制 unwrap ✅
+
+**已完成**: `event_server.rs` L118 使用 `.map_err()` 替代 `.unwrap()`。L281-311 的 `GET /api/sessions` 使用 `match db.lock()` 优雅处理 poisoning。
+
+---
+
+## 1.4 process_pid 数据丢失 ✅
+
+**已完成**: events 表已添加 `process_pid INTEGER` 列（L63），`insert_event` 写入（L237），`get_events_for_session` 读取并映射（L247,269）。测试 L438-480 验证 round-trip。
+
+---
+
+## 1.5 Event Server 无服务端错误日志 ✅
+
+**已完成**: `event_server.rs` L259 添加 `tracing::error!` 记录 handle_event 失败，L267 记录 JSON 解析失败，L291/L302 记录 DB 错误和锁 poisoning。
+
+---
+
+## 1.6 Event Server 线程无法优雅关闭 ✅
+
+**已完成**: `event_server.rs` L81 引入 `AtomicBool` shutdown flag，L101-108 暴露 `shutdown()` 和 `shutdown_signal()` API，L226-229 在 accept loop 中检测 shutdown flag。
+
+---
+
+## 1.7 `list_active_sessions` 已不存在 ✅
+
+**已完成**: 确认 db.rs 中无 dead code 残留，只保留 `list_all_sessions` 和 `list_sessions_with_pid`。
 
 ---
 

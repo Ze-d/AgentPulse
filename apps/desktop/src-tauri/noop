@@ -1,0 +1,6 @@
+{"timestamp":"2026-06-06T13:21:07.270710Z","level":"INFO","fields":{"message":"test message without file logging"},"target":"agentpulse_lib::logging::tests"}
+{"timestamp":"2026-06-06T13:22:12.170030Z","level":"INFO","fields":{"message":"test message without file logging"},"target":"agentpulse_lib::logging::tests"}
+{"timestamp":"2026-06-06T13:22:12.170039Z","level":"INFO","fields":{"message":"cleanup_old_sessions starting","retain_days":7},"target":"agentpulse_lib::db"}
+{"timestamp":"2026-06-06T13:22:35.600941Z","level":"INFO","fields":{"message":"test message without file logging"},"target":"agentpulse_lib::logging::tests"}
+{"timestamp":"2026-06-07T08:18:08.636245Z","level":"INFO","fields":{"message":"test message without file logging"},"target":"agentpulse_lib::logging::tests"}
+{"timestamp":"2026-06-07T10:19:14.404093Z","level":"INFO","fields":{"message":"test message without file logging"},"target":"agentpulse_lib::logging::tests"}
