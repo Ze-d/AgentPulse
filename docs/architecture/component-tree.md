@@ -35,7 +35,7 @@ App.vue
 |-----------|---------------|
 | `App.vue` | Root mount point, renders FloatingPanel |
 | `FloatingPanel.vue` | Main panel: header with session count + refresh + minimize, dismissible error banner, loading/empty state, session list with slide transition. Fetches config via `getConfig()` on mount, starts polling with configurable interval |
-| `SessionCard.vue` | Single collapsed session card: source abbreviation via `sourceAbbr()`, project name with tooltip, formatted duration via `useSessionDisplay()`, status label. `needsAttention` sessions get pulsing amber shadow animation |
+| `SessionCard.vue` | Single collapsed session card: source abbreviation via `sourceAbbr()`, project name with tooltip, formatted duration via `useSessionDisplay()`, status label. `needsAttention` sessions get pulsing amber shadow animation. Completed sessions support swipe-to-dismiss via `useSwipeDismiss` composable (80px threshold, spring-back or dismiss with red indicator) |
 | `ExpandedDetail.vue` | Expanded session view: full detail grid with status, duration, cwd, tool, transcript, message. Action buttons for open-directory / open-transcript via `@tauri-apps/plugin-opener` |
 
 ## State Flow
@@ -48,6 +48,7 @@ sessionStore (Pinia)
   ├── isLoading: boolean              ← true until first fetch completes
   └── actions:
       ├── fetchSessions()             ← get_sessions + finally { isLoading = false }
+      ├── dismissSession(id)          ← delete_session IPC + filter sessions
       ├── clearError()                ← set error = null
       └── toggleExpand(id)            ← toggle expandedSessionId
   └── getters:
@@ -56,9 +57,14 @@ sessionStore (Pinia)
       └── expandedSession             ← find(expandedSessionId)
 
 useSessionDisplay (composable)
-  ├── statusColor(session)            ← STATUS_COLORS lookup
-  ├── statusLabel(session)            ← STATUS_LABELS lookup
-  └── duration(session)               ← formatDuration(startedAt, completedAt)
+  ├── statusColor(sessionRef)         ← STATUS_COLORS lookup (reactive via Ref<AgentSession>)
+  ├── statusLabel(sessionRef)         ← STATUS_LABELS lookup
+  └── duration(sessionRef)            ← formatDuration(startedAt, completedAt)
+
+useSwipeDismiss (composable)
+  ├── translateX / isDismissing       ← reactive swipe state
+  ├── onTouchStart/Move/End           ← touch event handlers
+  └── onMouseDown + document mousemove/up ← mouse drag support
 
 sourceDisplay (util)
   └── sourceAbbr(source)              ← "claude-code"→"cc", "codex"→"cx", "gemini"→"gm", "copilot"→"cp"
@@ -66,7 +72,8 @@ sourceDisplay (util)
 ipc (util)
   ├── getSessions()                   ← invoke("get_sessions")
   ├── getConfig()                     ← invoke("get_config") → { pollIntervalMs }
-  └── hideMainWindow()               ← invoke("hide_main_window")
+  ├── hideMainWindow()               ← invoke("hide_main_window")
+  └── deleteSession(id)              ← invoke("delete_session")
 
 openActions (util)
   ├── openDirectory(path)             ← openPath() for system file explorer

@@ -11,7 +11,8 @@
 - [ipc.ts](../../apps/desktop/src/utils/ipc.ts) — Tauri IPC 调用
 - [openActions.ts](../../apps/desktop/src/utils/openActions.ts) — 打开操作
 - [sourceDisplay.ts](../../apps/desktop/src/utils/sourceDisplay.ts) — 来源显示
-- [useSessionDisplay.ts](../../apps/desktop/src/composables/useSessionDisplay.ts) — Session 展示逻辑
+- [useSessionDisplay.ts](../../apps/desktop/src/composables/useSessionDisplay.ts) — Session 展示逻辑 (接收 Ref<AgentSession>)
+- [useSwipeDismiss.ts](../../apps/desktop/src/composables/useSwipeDismiss.ts) — 滑动关闭 composable (touch + mouse)
 - [agent.ts](../../apps/desktop/src/types/agent.ts) — TypeScript 类型 + 工具函数
 
 ## 整体架构
@@ -147,12 +148,24 @@ watch(
                                                   → 脉冲动画 + 发光
 ```
 
-数据来源 (useSessionDisplay composable):
+数据来源 (useSessionDisplay composable，接收 Ref<AgentSession>):
 ```typescript
-const statusColor = computed(() => STATUS_COLORS[session.status]);
-const statusLabel = computed(() => STATUS_LABELS[session.status]);
-const duration = computed(() => formatDuration(session.startedAt, session.completedAt));
+// 组件中使用 toRef 保持响应式链接
+const sessionRef = toRef(props, "session");
+const { statusColor, statusLabel, duration } = useSessionDisplay(sessionRef);
+
+// composable 内部通过 .value 访问，Vue 正确追踪依赖
+const statusColor = computed(() => STATUS_COLORS[session.value.status]);
 ```
+
+### Swipe-to-Dismiss (completed 状态)
+
+仅 `status === "completed"` 的卡片支持滑动关闭:
+- **Touch**: `touchstart` → `touchmove` → `touchend`，向右滑动 > 80px 触发
+- **Mouse**: `mousedown` (卡片) → `document mousemove/mouseup`，同样 80px 阈值
+- **视觉**: 超过阈值后背景变红，显示 "✕ dismiss" 提示
+- **行为**: 触发 → `dismissSession()` → 后端 `delete_session` + 前端卡片渐隐移除
+- **回弹**: 未超过阈值时卡片弹簧回原位
 
 ### ExpandedDetail 显示内容
 

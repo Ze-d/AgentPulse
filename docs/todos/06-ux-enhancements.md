@@ -1,12 +1,12 @@
-# TODO: UX 增强改进
+# ~~TODO: UX 增强改进~~ (5/5 完成)
 
-> 状态：**0/5 已完成** — 全部未开始（创建日期: 2026-06-08，更新: 2026-06-08）
+> 状态：**5/5 已完成** ✅（创建日期: 2026-06-08，完成日期: 2026-06-08）
 >
-> **含 1 个 Bug 修复 + 4 个功能改进**
+> **含 1 个 Bug 修复 + 4 个功能改进，全部已实现**
 
 ---
 
-## 🐛 6.0 SessionCard 状态不更新（Reactivity Bug）🔴
+## 🐛 6.0 SessionCard 状态不更新（Reactivity Bug）✅ 已修复
 
 **问题**: Session 在后端已经变为 `[done]` 状态，但 `SessionCard` 面板上仍然显示为 `tool` 或 `starting` 等旧状态。只有点击展开面板后，状态才会更新为正确值。
 
@@ -94,9 +94,15 @@ SessionCard 组件 setup 时:
 - [apps/desktop/src/components/SessionCard.vue](../../apps/desktop/src/components/SessionCard.vue) — 使用 `toRef`
 - [apps/desktop/src/components/ExpandedDetail.vue](../../apps/desktop/src/components/ExpandedDetail.vue) — 使用 `toRef`
 
+**实施记录** (2026-06-08):
+- `useSessionDisplay.ts`: 参数类型 `AgentSession` → `Ref<AgentSession> | ComputedRef<AgentSession>`，内部 `.status` → `.value.status`
+- `SessionCard.vue`: 添加 `const sessionRef = toRef(props, "session")`，传入 composable
+- `ExpandedDetail.vue`: 同上
+- 验证: `vue-tsc --noEmit` 0 错误, `vitest` 18/18 通过
+
 ---
 
-## 6.1 滑动关闭已完成面板 🔴
+## 6.1 滑动关闭已完成面板 ✅ 已实现
 
 **问题**: 当 session 状态变为 `[done]` 后，卡片会保留在面板中，直到对应的 CC 终端进程退出（约 5 秒）后才自动清理。用户无法手动提前关闭已完成的面板，面板空间被无用卡片占据。
 
@@ -134,11 +140,18 @@ SessionCard 组件 setup 时:
 2. 仅在 `status === "completed"` 时激活滑动
 3. 滑动进度绑定 CSS `transform: translateX()` 和 `opacity`
 4. 超过阈值释放时触发 dismiss
-5. 未超过阈值时回弹到原位
+**实施记录** (2026-06-08):
+- 新建 `useSwipeDismiss.ts` composable: 封装滑动检测逻辑 (touch + mouse)，支持阈值判定 (80px) 和回弹动画
+- `SessionCard.vue`: 仅 `completed` 状态卡片可滑动，向右滑动触发 dismiss，背景变红显示 "✕ dismiss"
+- `sessionStore.ts`: 新增 `dismissSession` action，调用后端删除 + 前端即时移除
+- `ipc.ts`: 新增 `deleteSession()` IPC 函数
+- `commands.rs`: 新增 `delete_session` Tauri command（后端 `db.rs` 已有 `delete_session` 方法）
+- `lib.rs`: 注册 `delete_session` 到 invoke_handler
+- 验证: `vue-tsc --noEmit` 0 错误, `vitest` 18/18 通过, `cargo test` 53/53 通过
 
 ---
 
-## 6.2 窗口可见但任务栏不显示 🔴
+## 6.2 窗口可见但任务栏不显示 ✅ 已实现
 
 **问题**: 当前 AgentPulse 悬浮窗在任务栏显示为一个独立窗口图标。悬浮窗设计意图是轻量、不干扰工作流，任务栏图标增加了视觉噪音。
 
@@ -176,9 +189,12 @@ SessionCard 组件 setup 时:
 }
 ```
 
+**实施记录** (2026-06-08):
+- `tauri.conf.json`: 在 `app.windows[0]` 中添加 `"skipTaskbar": true`
+
 ---
 
-## 6.3 修改应用图标 🔴
+## 6.3 修改应用图标 ✅ 已实现
 
 **问题**: 当前应用图标是 Tauri 默认图标或占位图标，需要替换为 AgentPulse 品牌图标。
 
@@ -223,9 +239,17 @@ apps/desktop/src-tauri/icons/
 - 图标应体现 "pulse" / "agent monitoring" 概念
 - 保持简洁，小尺寸下可辨识
 
+**实施记录** (2026-06-08):
+- 用户更新 `icon.png` (512x512 RGBA) 为品牌图标
+- 使用 PIL LANCZOS 手动生成所有尺寸 PNG + 多分辨率 ICO + ICNS
+- `tray.rs`: 改用 `Image::from_bytes(include_bytes!("../icons/icon.ico"))` 显式加载托盘图标
+- `Cargo.toml`: `tauri` 添加 `image-ico` feature
+- 清理多余图标文件，仅保留 6 个必要文件
+- 验证: `cargo test` 53/53 通过, `npm run tauri build` MSI + NSIS 构建成功
+
 ---
 
-## 6.4 done 状态颜色与 starting 相同 🔴
+## 6.4 done 状态颜色与 starting 相同 ✅ 已修复
 
 **问题**: `completed`（done）和 `starting` 状态使用了完全相同的颜色 `#89b4fa`（Catppuccin Blue），用户无法一眼区分"正在启动"和"已完成"的 session 卡片。
 
@@ -233,8 +257,8 @@ apps/desktop/src-tauri/icons/
 ```typescript
 export const STATUS_COLORS: Record<AgentStatus, string> = {
   starting: "#89b4fa",        // Catppuccin Blue
-  completed: "#89b4fa",       // Catppuccin Blue ← 与 starting 相同！
-  running: "#a6e3a1",         // Catppuccin Green
+  completed: "#a6e3a1",       // Catppuccin Blue ← 与 starting 相同！
+  running: "#94e2d5",         // Catppuccin Green
   tool_running: "#f9e2af",    // Catppuccin Yellow
   waiting_input: "#fab387",   // Catppuccin Peach
   waiting_permission: "#fab387", // Catppuccin Peach
@@ -261,8 +285,11 @@ export const STATUS_COLORS: Record<AgentStatus, string> = {
 - 颜色变更会影响: `SessionCard.vue` 的 `borderLeftColor`、文字颜色，以及 `ExpandedDetail.vue` 的边框和标题颜色
 - 建议同时检查 `useSessionDisplay.ts` composable 是否正确引用 `STATUS_COLORS`
 
-**修改参考**:
-```diff
-- completed: "#89b4fa",
-+ completed: "#94e2d5",  // Catppuccin Teal — 与 starting 区分
-```
+**实施记录** (2026-06-08):
+- `types/agent.ts`: 实际采用的配色方案:
+  - `starting`: `#89b4fa` (Blue, 不变)
+  - `running`: `#94e2d5` (Teal, 原 `#a6e3a1` Green)
+  - `completed`: `#a6e3a1` (Green, 原 `#89b4fa` Blue — 与 starting 相同)
+  - 其他状态颜色不变
+- 所有状态现在均有独特颜色，形成 Blue → Teal → Green → Yellow → Peach → Red 的生命周期渐变
+- 验证: `vue-tsc --noEmit` 0 错误

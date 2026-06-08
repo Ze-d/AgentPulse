@@ -61,14 +61,14 @@ export const STATUS_LABELS: Record<AgentStatus, string> = {
 };
 
 export const STATUS_COLORS: Record<AgentStatus, string> = {
-  starting: "#89b4fa",
-  running: "#a6e3a1",
-  tool_running: "#f9e2af",
-  waiting_input: "#fab387",
-  waiting_permission: "#fab387",
-  completed: "#89b4fa",
-  failed: "#f38ba8",
-  unknown: "#6c7086",
+  starting: "#89b4fa",           // Catppuccin Blue
+  running: "#94e2d5",            // Catppuccin Teal
+  tool_running: "#f9e2af",       // Catppuccin Yellow
+  waiting_input: "#fab387",      // Catppuccin Peach
+  waiting_permission: "#fab387", // Catppuccin Peach
+  completed: "#a6e3a1",          // Catppuccin Green
+  failed: "#f38ba8",             // Catppuccin Red
+  unknown: "#6c7086",            // Catppuccin Overlay0
 };
 
 export function formatDuration(startedAt: number, completedAt?: number): string {
