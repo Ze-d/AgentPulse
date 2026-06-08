@@ -22,7 +22,7 @@
 │     ├─ CreateToolhelp32Snapshot → 枚举所有进程                          │
 │     └─ 向上遍历父进程，跳过 shell → 找到 node.exe                        │
 │  3. hook_data["process_pid"] = CC_PID                                  │
-│  4. HTTP POST http://127.0.0.1:17878/api/events                        │
+│  4. HTTP POST http://127.0.0.1:{port}/api/events                       │
 │     └─ 最多 3 次重试，间隔 1s                                           │
 └──────────────────────────────┬──────────────────────────────────────────┘
                                │ HTTP POST /api/events
@@ -31,7 +31,7 @@
                                │         cwd, tool_name, process_pid, ... }
                                ▼
 ┌─────────────────────────────────────────────────────────────────────────┐
-│                  event_server.rs (Rust, 端口 17878)                       │
+│                  event_server.rs (Rust, 端口可配置，默认 17878)            │
 │                                                                          │
 │  1. 读取请求体 → serde_json::from_str()                                 │
 │  2. normalize_claude_code_event(raw_json)                               │
@@ -55,7 +55,7 @@
           ▼                                         ▼
 ┌──────────────────────────┐           ┌──────────────────────────┐
 │  process_checker.rs      │           │  commands.rs (Tauri IPC) │
-│  (独立线程, 5s 循环)     │           │                          │
+│  (独立线程, 可配置间隔)   │           │                          │
 │                          │           │  get_sessions()          │
 │  list_sessions_with_pid()│           │    → db.list_all()       │
 │  → sysinfo 检查 PID 存活 │           │                          │
@@ -69,10 +69,10 @@
                                                    │ Tauri IPC
                                                    ▼
 ┌─────────────────────────────────────────────────────────────────────────┐
-│                  前端 (Vue 3 + Pinia + Tailwind CSS)                      │
+│                  前端 (Vue 3 + Pinia)                                      │
 │                                                                          │
 │  Pinia sessionStore                                                      │
-│  ├─ startPolling(2000) — 每 2 秒                                        │
+│  ├─ startPolling(interval) — 可配置间隔（默认 2000ms）                   │
 │  │   └─ invoke("get_sessions") → sessions: AgentSession[]               │
 │  │                                                                       │
 │  └─ getters:                                                             │
@@ -81,7 +81,7 @@
 │      └─ expandedSession — 当前展开的 session                            │
 │                                                                          │
 │  FloatingPanel.vue                                                       │
-│  ├─ onMounted → startPolling(2000)                                      │
+│  ├─ onMounted → getConfig() → startPolling(pollIntervalMs)               │
 │  ├─ onUnmounted → stopPolling()                                         │
 │  ├─ watch(sessions) → adjustWindowSize()                                │
 │  │                                                                       │
@@ -204,11 +204,11 @@ t=45s   用户重启应用
   │     └─ tiny_http::Server::incoming_requests() 循环
   │
   ├─→ Process Checker 线程
-  │     └─ loop { sleep(5s); check_pids(); }
+  │     └─ loop { sleep(Ns); check_pids(); }  // N 来自配置
   │
   └─→ Hook Install 线程 (启动时一次性)
         └─ extract_monitor_script + ensure_hooks_installed
-        
+
   所有线程共享: Arc<Mutex<Database>>
 ```
 
@@ -217,8 +217,8 @@ t=45s   用户重启应用
 | 锁持有者 | 持有时间 | 频率 |
 |----------|----------|------|
 | EventServer (POST /api/events) | ~1ms (查询+写入) | 每次 CC 事件 |
-| get_sessions IPC | ~0.5ms (SELECT *) | 每 2 秒 |
-| Process Checker | ~0.5ms (查询) / ~1ms (查询+删除) | 每 5 秒 |
+| get_sessions IPC | ~0.5ms (SELECT *) | 可配置，默认每 2 秒 |
+| Process Checker | ~0.5ms (查询) / ~1ms (查询+删除) | 可配置，默认每 5 秒 |
 | Hook Install (启动时) | 无（操作不同的文件） | 一次 |
 
 锁竞争风险低：所有数据库操作都是简单 CRUD，毫秒级完成。

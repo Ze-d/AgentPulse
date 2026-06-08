@@ -34,7 +34,7 @@ AgentPulse/
 │   │   ├── components/            # .vue 组件
 │   │   ├── stores/                # Pinia 状态管理
 │   │   ├── types/                 # TypeScript 类型
-│   │   └── assets/                # CSS (Tailwind + Catppuccin)
+│   │   └── assets/                # CSS (Catppuccin Mocha)
 │   ├── src-tauri/                 # Rust 后端
 │   │   ├── src/
 │   │   │   ├── lib.rs             # 共享类型 + run() 入口
@@ -349,7 +349,7 @@ rustup default stable-x86_64-pc-windows-msvc
 
 ### Q: 如何看到 Tauri 的日志输出
 
-→ Rust 后端使用 `env_logger`，启动前设置环境变量：
+→ Rust 后端使用 `tracing`，启动前设置环境变量：
 ```powershell
 $env:RUST_LOG = "debug"
 npm run tauri dev

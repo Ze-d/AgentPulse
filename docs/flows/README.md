@@ -28,7 +28,7 @@
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│  桌面悬浮窗 (Vue 3 + Pinia + Tailwind CSS)              │
+│  桌面悬浮窗 (Vue 3 + Pinia)                              │
 │  FloatingPanel → SessionCard + ExpandedDetail           │
 │  sessionStore: 2s 轮询 get_sessions() IPC               │
 ├─────────────────────────────────────────────────────────┤
