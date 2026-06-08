@@ -166,6 +166,7 @@ pub fn run() {
             commands::get_sessions,
             commands::get_session_detail,
             commands::get_session_events,
+            commands::delete_session,
             commands::get_hook_status_cmd,
             commands::install_hooks_cmd,
             commands::uninstall_hooks_cmd,

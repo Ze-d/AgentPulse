@@ -1,6 +1,6 @@
 import { defineStore } from "pinia";
 import type { AgentSession } from "../types/agent";
-import { getSessions } from "../utils/ipc";
+import { getSessions, deleteSession } from "../utils/ipc";
 import { createLogger } from "../utils/logger";
 
 const logger = createLogger("SessionStore");
@@ -74,6 +74,18 @@ export const useSessionStore = defineStore("sessions", {
 
     clearError() {
       this.error = null;
+    },
+
+    async dismissSession(sessionId: string) {
+      try {
+        await deleteSession(sessionId);
+        this.sessions = this.sessions.filter(
+          (s) => s.sessionId !== sessionId
+        );
+      } catch (e) {
+        logger.error("dismissSession failed", e);
+        this.error = String(e);
+      }
     },
   },
 });

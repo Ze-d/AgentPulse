@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { toRef } from "vue";
 import type { AgentSession } from "../types/agent";
 import { useSessionDisplay } from "../composables/useSessionDisplay";
 
@@ -12,7 +13,8 @@ const emit = defineEmits<{
   openTranscript: [path: string];
 }>();
 
-const { statusColor, statusLabel, duration } = useSessionDisplay(props.session);
+const sessionRef = toRef(props, "session");
+const { statusColor, statusLabel, duration } = useSessionDisplay(sessionRef);
 </script>
 
 <template>

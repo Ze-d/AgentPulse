@@ -142,6 +142,14 @@ pub fn log_event(level: String, module: String, message: String, details: Option
     }
 }
 
+#[tauri::command]
+pub fn delete_session(state: State<AppState>, session_id: String) -> Result<(), String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    db.delete_session(&session_id).map_err(|e| e.to_string())?;
+    tracing::info!(session_id = %session_id, "delete_session: user dismissed");
+    Ok(())
+}
+
 /// Return the subset of configuration values that the frontend needs.
 #[tauri::command]
 pub fn get_config(state: State<AppState>) -> FrontendConfig {

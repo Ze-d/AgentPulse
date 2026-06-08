@@ -1,7 +1,10 @@
 <script setup lang="ts">
+import { toRef, ref, onUnmounted } from "vue";
 import type { AgentSession } from "../types/agent";
 import { sourceAbbr } from "../utils/sourceDisplay";
 import { useSessionDisplay } from "../composables/useSessionDisplay";
+import { useSwipeDismiss } from "../composables/useSwipeDismiss";
+import { useSessionStore } from "../stores/sessionStore";
 
 const props = defineProps<{
   session: AgentSession;
@@ -11,38 +14,145 @@ const emit = defineEmits<{
   click: [sessionId: string];
 }>();
 
-const { statusColor, statusLabel, duration } = useSessionDisplay(props.session);
+const sessionRef = toRef(props, "session");
+const { statusColor, statusLabel, duration } = useSessionDisplay(sessionRef);
+const store = useSessionStore();
+
+const canSwipe = props.session.status === "completed";
+
+const {
+  translateX,
+  isDismissing,
+  dismissed,
+  hasMoved,
+  moveSwipe,
+  endSwipe,
+  onTouchStart,
+  onTouchMove,
+  onTouchEnd,
+  onMouseDown,
+} = useSwipeDismiss(() => {
+  store.dismissSession(props.session.sessionId);
+});
+
+// Document-level mouse tracking for swipe
+const mouseActive = ref(false);
+
+function handleMouseDown(e: MouseEvent) {
+  if (!canSwipe) return;
+  onMouseDown(e);
+  mouseActive.value = true;
+  document.addEventListener("mousemove", handleMouseMove);
+  document.addEventListener("mouseup", handleMouseUp);
+}
+
+function handleMouseMove(e: MouseEvent) {
+  moveSwipe(e.clientX, e.clientY);
+}
+
+function handleMouseUp() {
+  mouseActive.value = false;
+  document.removeEventListener("mousemove", handleMouseMove);
+  document.removeEventListener("mouseup", handleMouseUp);
+  endSwipe();
+}
+
+onUnmounted(() => {
+  document.removeEventListener("mousemove", handleMouseMove);
+  document.removeEventListener("mouseup", handleMouseUp);
+});
+
+function handleCardClick() {
+  // Don't expand if user was swiping
+  if (hasMoved.value) return;
+  emit("click", props.session.sessionId);
+}
 </script>
 
 <template>
   <div
-    class="session-card"
-    :class="{ attention: session.needsAttention }"
-    :style="{ borderLeftColor: statusColor }"
-    @click="emit('click', session.sessionId)"
+    class="session-card-wrapper"
+    :class="{ 'swipeable': canSwipe, 'dismissed': dismissed }"
+    :style="{ transform: `translateX(${translateX}px)`, opacity: dismissed ? 0 : 1 }"
   >
-    <div class="card-row">
-      <span class="project" :style="{ color: statusColor }" :title="session.projectName">
-        {{ sourceAbbr(session.source) }} &gt; {{ session.projectName }}
-      </span>
-      <span class="duration">{{ duration }}</span>
-      <span class="status" :style="{ color: statusColor }">{{ statusLabel }}</span>
+    <!-- Background: dismiss indicator shown behind the card during swipe -->
+    <div
+      v-if="canSwipe"
+      class="swipe-bg"
+      :class="{ active: isDismissing }"
+    >
+      <span class="swipe-label">{{ isDismissing ? '✕ dismiss' : '← slide' }}</span>
     </div>
-    <div v-if="session.lastToolName" class="card-row secondary">
-      <span class="tool">{{ session.lastToolName }}</span>
+
+    <div
+      class="session-card"
+      :class="{ attention: session.needsAttention }"
+      :style="{ borderLeftColor: statusColor }"
+      @click="handleCardClick"
+      @touchstart.passive="canSwipe ? onTouchStart($event) : undefined"
+      @touchmove.passive="canSwipe ? onTouchMove($event) : undefined"
+      @touchend="canSwipe ? onTouchEnd() : undefined"
+      @mousedown="handleMouseDown"
+    >
+      <div class="card-row">
+        <span class="project" :style="{ color: statusColor }" :title="session.projectName">
+          {{ sourceAbbr(session.source) }} &gt; {{ session.projectName }}
+        </span>
+        <span class="duration">{{ duration }}</span>
+        <span class="status" :style="{ color: statusColor }">{{ statusLabel }}</span>
+      </div>
+      <div v-if="session.lastToolName" class="card-row secondary">
+        <span class="tool">{{ session.lastToolName }}</span>
+      </div>
     </div>
   </div>
 </template>
 
 <style scoped>
+.session-card-wrapper {
+  position: relative;
+  margin-bottom: 4px;
+  transition: opacity 0.25s ease;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.swipe-bg {
+  position: absolute;
+  inset: 0;
+  border-radius: 6px;
+  background: var(--color-surface0);
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding-right: 12px;
+  transition: background 0.15s ease;
+}
+
+.swipe-bg.active {
+  background: rgba(243, 139, 168, 0.2);
+}
+
+.swipe-label {
+  font-size: 11px;
+  color: var(--color-overlay0);
+  transition: color 0.15s ease;
+}
+
+.swipe-bg.active .swipe-label {
+  color: var(--color-red);
+}
+
 .session-card {
   background: var(--color-surface0);
   border-radius: 6px;
   padding: 6px 10px;
-  margin-bottom: 4px;
   border-left: 3px solid;
   cursor: pointer;
   line-height: 1.2;
+  position: relative;
+  z-index: 1;
+  transition: background 0.15s ease;
 }
 
 .session-card:hover {

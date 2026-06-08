@@ -47,7 +47,7 @@
 - [代码质量改进](todos/03-code-quality.md) — 2/10 未完成
 - [可访问性改进](todos/04-accessibility.md) — 0/7 未开始
 - [测试与 CI 增强](todos/05-testing-and-ci.md) — 3/11 未完成
-- [UX 增强改进](todos/06-ux-enhancements.md) — 0/4 未开始
+- [UX 增强改进](todos/06-ux-enhancements.md) — 0/5 未开始（含 1 🐛 + 4 功能）
 
 ## 修复记录
 
