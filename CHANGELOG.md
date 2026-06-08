@@ -5,6 +5,30 @@ All notable changes to AgentPulse will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- Swipe-to-dismiss for completed session cards (touch + mouse support)
+  - New `useSwipeDismiss` composable with 80px threshold and spring-back animation
+  - `dismissSession` store action with backend `delete_session` command
+  - Visual feedback: "✕ dismiss" indicator with red background on threshold cross
+- `delete_session` Tauri IPC command for manual session removal
+- `skipTaskbar: true` in window config — floating panel no longer appears in taskbar
+- Updated application icon (brand icon, 6 curated sizes)
+- Tray icon explicit loading via `Image::from_bytes(include_bytes!(...))` for guaranteed icon embedding
+- `image-ico` feature enabled for Tauri
+
+### Changed
+- `useSessionDisplay` now accepts `Ref<AgentSession>` instead of plain object — reactive prop changes now correctly trigger UI updates
+- `STATUS_COLORS`: `completed` → `#a6e3a1` (Green), `running` → `#94e2d5` (Teal) — all 8 states now have unique colors
+- Cleaned up icons directory: removed 11 unused StoreLogo/Android/iOS files (6 essential files remain)
+- `tray.rs` now loads icon at compile time via `include_bytes!`
+
+### Fixed
+- **Reactivity Bug**: `SessionCard` not updating status display after polling refresh
+  - Root cause: `useSessionDisplay` received non-reactive plain object, `computed` closure never re-evaluated
+  - Fix: `toRef(props, "session")` → composable receives `Ref<AgentSession>` → `.value` access tracked by Vue
+
 ## [0.4.0] - 2026-06-07
 
 ### Added

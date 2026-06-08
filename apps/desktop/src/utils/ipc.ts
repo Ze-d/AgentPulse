@@ -34,3 +34,13 @@ export async function hideMainWindow(): Promise<void> {
     throw e;
   }
 }
+
+export async function deleteSession(sessionId: string): Promise<void> {
+  try {
+    await invoke("delete_session", { sessionId });
+    logger.debug(`deleteSession: ${sessionId}`);
+  } catch (e) {
+    logger.error("delete_session IPC failed", e);
+    throw e;
+  }
+}
