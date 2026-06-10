@@ -74,6 +74,7 @@ jobs:
 
       - name: Cargo audit
         working-directory: apps/desktop/src-tauri
+        shell: bash
         run: |
           cargo install cargo-audit --locked 2>/dev/null || true
           cargo audit

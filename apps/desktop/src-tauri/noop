@@ -7,3 +7,12 @@
 {"timestamp":"2026-06-08T06:32:03.181940Z","level":"INFO","fields":{"message":"test message without file logging"},"target":"agentpulse_lib::logging::tests"}
 {"timestamp":"2026-06-08T08:02:51.611331Z","level":"INFO","fields":{"message":"test message without file logging"},"target":"agentpulse_lib::logging::tests"}
 {"timestamp":"2026-06-08T08:02:51.611513Z","level":"INFO","fields":{"message":"AgentPulse hooks updated (path changed)","path":"C:\\Users\\pw\\AppData\\Local\\Temp\\.tmpJW92hI\\settings.json"},"target":"agentpulse_lib::hooks"}
+{"timestamp":"2026-06-10T02:30:38.998238Z","level":"INFO","fields":{"message":"test message without file logging"},"target":"agentpulse_lib::logging::tests"}
+{"timestamp":"2026-06-10T02:31:50.267885Z","level":"INFO","fields":{"message":"test message without file logging"},"target":"agentpulse_lib::logging::tests"}
+{"timestamp":"2026-06-10T02:36:52.559307Z","level":"INFO","fields":{"message":"test message without file logging"},"target":"agentpulse_lib::logging::tests"}
+{"timestamp":"2026-06-10T02:38:35.151736Z","level":"INFO","fields":{"message":"test message without file logging"},"target":"agentpulse_lib::logging::tests"}
+{"timestamp":"2026-06-10T02:42:26.633149Z","level":"INFO","fields":{"message":"test message without file logging"},"target":"agentpulse_lib::logging::tests"}
+{"timestamp":"2026-06-10T03:07:26.388802Z","level":"INFO","fields":{"message":"test message without file logging"},"target":"agentpulse_lib::logging::tests"}
+{"timestamp":"2026-06-10T03:10:52.211272Z","level":"INFO","fields":{"message":"AgentPulse hooks updated (path changed)","path":"C:\\Users\\pw\\AppData\\Local\\Temp\\.tmpjwJMOe\\settings.json"},"target":"agentpulse_lib::hooks"}
+{"timestamp":"2026-06-10T03:10:52.211258Z","level":"INFO","fields":{"message":"test message without file logging"},"target":"agentpulse_lib::logging::tests"}
+{"timestamp":"2026-06-10T06:41:56.202225Z","level":"INFO","fields":{"message":"test message without file logging"},"target":"agentpulse_lib::logging::tests"}
