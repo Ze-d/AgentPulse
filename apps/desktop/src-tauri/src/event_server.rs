@@ -74,6 +74,64 @@ pub fn normalize_claude_code_event(raw: &serde_json::Value) -> AgentEvent {
     }
 }
 
+/// Normalize a raw Codex CLI hook JSON event into an `AgentEvent`.
+///
+/// Codex emits the same `hook_event_name` values (PascalCase) and the same
+/// `session_id`, `cwd`, `transcript_path` structure as Claude Code.  Extra
+/// Codex-only fields (`model`, `permission_mode`, `turn_id`) are silently
+/// ignored.  Unlike Claude Code, `PermissionRequest` is its own top-level
+/// hook event rather than a `Notification` sub-type.
+pub fn normalize_codex_event(raw: &serde_json::Value) -> AgentEvent {
+    let hook_event_name = raw["hook_event_name"].as_str().unwrap_or("");
+    let session_id = raw["session_id"].as_str().unwrap_or("unknown");
+    let cwd = raw["cwd"].as_str().unwrap_or("");
+    let transcript_path = raw["transcript_path"].as_str().map(|s| s.to_string());
+
+    // Prefer `message` field; fall back to `last_assistant_message`.
+    let message = raw["message"]
+        .as_str()
+        .or_else(|| raw["last_assistant_message"].as_str())
+        .map(|s| s.to_string());
+
+    let tool_name = raw["tool_name"].as_str().map(|s| s.to_string());
+    let process_pid = raw["process_pid"].as_u64().map(|v| v as u32);
+
+    // Derive project name from the last path component of cwd.
+    let project_name = if cwd.is_empty() {
+        None
+    } else {
+        std::path::Path::new(cwd)
+            .file_name()
+            .and_then(|n| n.to_str())
+            .map(|s| s.to_string())
+    };
+
+    let (event_type, status) = match hook_event_name {
+        "SessionStart" => (EventType::SessionStart, AgentStatus::Starting),
+        "PreToolUse" => (EventType::PreToolUse, AgentStatus::ToolRunning),
+        "PostToolUse" => (EventType::PostToolUse, AgentStatus::Running),
+        "PermissionRequest" => (EventType::PermissionRequest, AgentStatus::WaitingPermission),
+        "Stop" | "SubagentStop" => (EventType::Stop, AgentStatus::Completed),
+        "UserPromptSubmit" => (EventType::Notification, AgentStatus::Running),
+        _ => (EventType::Notification, AgentStatus::Running),
+    };
+
+    AgentEvent {
+        id: Uuid::new_v4().to_string(),
+        source: AgentSource::Codex,
+        session_id: session_id.to_string(),
+        cwd: cwd.to_string(),
+        project_name,
+        event_type,
+        status,
+        message,
+        tool_name,
+        transcript_path,
+        created_at: Utc::now().timestamp_millis(),
+        process_pid,
+    }
+}
+
 /// HTTP server that receives Claude Code hook events, normalizes them,
 /// applies the state machine, and persists the results via the `Database`.
 pub struct EventServer {
