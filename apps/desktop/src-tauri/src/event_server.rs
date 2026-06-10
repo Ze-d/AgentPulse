@@ -231,7 +231,7 @@ impl EventServer {
                     .unwrap_or_else(|| "unknown".into());
                 AgentSession {
                     session_id: event.session_id.clone(),
-                    source: AgentSource::ClaudeCode,
+                    source: event.source.clone(),
                     cwd: event.cwd.clone(),
                     project_name,
                     status: event.status.clone(),
