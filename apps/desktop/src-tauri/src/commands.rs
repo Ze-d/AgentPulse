@@ -73,7 +73,6 @@ pub fn get_hook_status_cmd(app_handle: tauri::AppHandle) -> Result<HashMap<Strin
 #[tauri::command]
 pub fn install_hooks_cmd(
     app_handle: tauri::AppHandle,
-    state: State<AppState>,
 ) -> Result<String, String> {
     tracing::info!("user triggered hook installation");
     let settings_path = app_handle
@@ -88,9 +87,8 @@ pub fn install_hooks_cmd(
         .path()
         .app_data_dir()
         .map_err(|e| e.to_string())?;
-    let monitor_path = hooks::extract_monitor_script(&resource_dir, &app_data_dir)?;
-    let python = hooks::resolve_python(state.config.python.as_deref());
-    hooks::ensure_hooks_installed(&settings_path, &monitor_path.to_string_lossy(), &python)
+    let hook_path = hooks::extract_hook_binary(&resource_dir, &app_data_dir)?;
+    hooks::ensure_hooks_installed(&settings_path, &hook_path.to_string_lossy())
 }
 
 #[tauri::command]
@@ -116,7 +114,6 @@ pub fn get_codex_hook_status_cmd(app_handle: tauri::AppHandle) -> Result<HashMap
 #[tauri::command]
 pub fn install_codex_hooks_cmd(
     app_handle: tauri::AppHandle,
-    state: State<AppState>,
 ) -> Result<String, String> {
     tracing::info!("user triggered codex hook installation");
     let config_path = app_handle
@@ -131,9 +128,8 @@ pub fn install_codex_hooks_cmd(
         .path()
         .app_data_dir()
         .map_err(|e| e.to_string())?;
-    let monitor_path = hooks::extract_monitor_script(&resource_dir, &app_data_dir)?;
-    let python = hooks::resolve_python(state.config.python.as_deref());
-    hooks::ensure_codex_hooks_installed(&config_path, &monitor_path.to_string_lossy(), &python)
+    let hook_path = hooks::extract_hook_binary(&resource_dir, &app_data_dir)?;
+    hooks::ensure_codex_hooks_installed(&config_path, &hook_path.to_string_lossy())
 }
 
 #[tauri::command]

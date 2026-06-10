@@ -1,6 +1,6 @@
 //! Hook registration for AgentPulse → Claude Code integration.
 //!
-//! On every launch, this module extracts the bundled `monitor_hook.py` into
+//! On every launch, this module extracts the bundled `agentpulse-hook` binary into
 //! the app data directory and ensures `~/.claude/settings.json` contains the
 //! 6 hook events that forward Claude Code lifecycle events to the AgentPulse
 //! HTTP server.
@@ -36,33 +36,42 @@ const CODEX_HOOK_EVENTS: [&str; 6] = [
 // Locate monitor script
 // ---------------------------------------------------------------------------
 
-/// Locate `monitor_hook.py` on disk.
+/// Locate `agentpulse-hook` binary on disk.
 ///
-/// In bundled (release) mode the file lives in the resource directory. In dev
-/// mode we fall back to the source tree under `adapters/claude-code/`.
-pub fn find_monitor_script(resource_dir: &Path) -> Result<PathBuf, String> {
-    let bundled = resource_dir.join("monitor_hook.py");
+/// In bundled (release) mode the binary lives in the resource directory. In
+/// dev mode we fall back to the hook-adapter build output.
+pub fn find_hook_binary(resource_dir: &Path) -> Result<PathBuf, String> {
+    let bin_name = if cfg!(target_os = "windows") {
+        "agentpulse-hook.exe"
+    } else {
+        "agentpulse-hook"
+    };
+
+    let bundled = resource_dir.join(bin_name);
     if bundled.exists() {
-        tracing::debug!(path = %bundled.display(), "monitor script found in resource dir");
+        tracing::debug!(path = %bundled.display(), "hook binary found in resource dir");
         return Ok(bundled);
     }
 
-    // Dev fallback: resolve relative to the Cargo manifest directory.
+    // Dev fallback: look in hook-adapter target directory.
+    let profile = if cfg!(debug_assertions) { "debug" } else { "release" };
     let dev_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("..") // src-tauri/
-        .join("..") // desktop/
-        .join("..") // apps/
-        .join("..") // repo root
+        .join("..")   // src-tauri/
+        .join("..")   // desktop/
+        .join("..")   // apps/
+        .join("..")   // repo root
         .join("adapters")
-        .join("claude-code")
-        .join("monitor_hook.py");
+        .join("hook-adapter")
+        .join("target")
+        .join(profile)
+        .join(bin_name);
     if dev_path.exists() {
-        tracing::debug!(path = %dev_path.display(), "monitor script found in dev path");
+        tracing::debug!(path = %dev_path.display(), "hook binary found in dev path");
         return Ok(dev_path);
     }
 
     Err(format!(
-        "monitor_hook.py not found in resource_dir ({}) or dev path ({})",
+        "agentpulse-hook binary not found in resource_dir ({}) or dev path ({})",
         bundled.display(),
         dev_path.display()
     ))
@@ -72,14 +81,19 @@ pub fn find_monitor_script(resource_dir: &Path) -> Result<PathBuf, String> {
 // Extract script into persistent location
 // ---------------------------------------------------------------------------
 
-/// Copy `monitor_hook.py` into `app_data_dir`, overwriting only when the
-/// source is newer. Returns the destination path.
-pub fn extract_monitor_script(resource_dir: &Path, app_data_dir: &Path) -> Result<PathBuf, String> {
-    let src = find_monitor_script(resource_dir)?;
+/// Copy `agentpulse-hook` binary into `app_data_dir`, overwriting only when
+/// the source is newer. Returns the destination path.
+pub fn extract_hook_binary(resource_dir: &Path, app_data_dir: &Path) -> Result<PathBuf, String> {
+    let src = find_hook_binary(resource_dir)?;
 
     fs::create_dir_all(app_data_dir).map_err(|e| format!("create app_data_dir: {e}"))?;
 
-    let dst = app_data_dir.join("monitor_hook.py");
+    let bin_name = if cfg!(target_os = "windows") {
+        "agentpulse-hook.exe"
+    } else {
+        "agentpulse-hook"
+    };
+    let dst = app_data_dir.join(bin_name);
 
     // Only copy if the source is newer (or destination missing).
     let should_copy = match (fs::metadata(&src), fs::metadata(&dst)) {
@@ -89,8 +103,19 @@ pub fn extract_monitor_script(resource_dir: &Path, app_data_dir: &Path) -> Resul
     };
 
     if should_copy {
-        fs::copy(&src, &dst).map_err(|e| format!("copy monitor_hook.py: {e}"))?;
-        tracing::info!(src = %src.display(), dst = %dst.display(), "monitor_hook.py extracted");
+        fs::copy(&src, &dst).map_err(|e| format!("copy agentpulse-hook: {e}"))?;
+        tracing::info!(src = %src.display(), dst = %dst.display(), "agentpulse-hook extracted");
+
+        // Ensure executable permissions on Unix.
+        #[cfg(not(target_os = "windows"))]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            if let Ok(meta) = fs::metadata(&dst) {
+                let mut perms = meta.permissions();
+                perms.set_mode(0o755);
+                let _ = fs::set_permissions(&dst, perms);
+            }
+        }
     }
 
     Ok(dst)
@@ -100,51 +125,16 @@ pub fn extract_monitor_script(resource_dir: &Path, app_data_dir: &Path) -> Resul
 // Build hook configs
 // ---------------------------------------------------------------------------
 
-/// Resolve the Python interpreter to use in hook commands.
-///
-/// When `hint` is `Some`, it is used directly.  Otherwise probes
-/// candidates and, once a working interpreter is found, asks it for
-/// its own absolute path via `sys.executable` so that hook commands
-/// work even when the target agent runs in a different environment
-/// (e.g. Codex App Server on Windows where `python3` may not be on
-/// PATH even though it is available in the current shell).
-pub(crate) fn resolve_python(hint: Option<&str>) -> String {
-    if let Some(p) = hint {
-        tracing::debug!(python = %p, "using python from config");
-        return p.to_string();
-    }
-    for candidate in &["python3", "python"] {
-        if let Ok(output) = std::process::Command::new(candidate)
-            .arg("-c")
-            .arg("import sys; print(sys.executable)")
-            .output()
-        {
-            if output.status.success() {
-                let path = String::from_utf8_lossy(&output.stdout)
-                    .trim()
-                    .to_string();
-                if !path.is_empty() {
-                    tracing::debug!(python = %path, "resolved python absolute path");
-                    return path;
-                }
-            }
-        }
-    }
-    // Final fallback — hope for the best.
-    tracing::debug!("python interpreter not found, defaulting to 'python'");
-    "python".to_string()
-}
-
-/// Build the `hooks` object for all 6 events pointing at `monitor_script`.
-fn build_hook_configs(monitor_script: &str, python: &str) -> Value {
+/// Build the `hooks` object for all 6 events pointing at `hook_binary`.
+fn build_hook_configs(hook_binary: &str) -> Value {
     let mut hooks = serde_json::Map::new();
-    let command = format!("{python} \"{monitor_script}\"");
+    let escaped = hook_binary.replace('\\', "\\\\");
 
     for event in &HOOK_EVENTS {
         let entry = json!([{
             "matcher": "",
             "hooks": [
-                { "type": "command", "command": command }
+                { "type": "command", "command": escaped }
             ]
         }]);
         hooks.insert(event.to_string(), entry);
@@ -199,7 +189,7 @@ fn backup_settings(path: &Path) {
 // Core public API
 // ---------------------------------------------------------------------------
 
-/// Ensure all 6 AgentPulse hooks are present and point to `monitor_script`.
+/// Ensure all 6 AgentPulse hooks are present and point to `hook_binary`.
 ///
 /// Returns:
 /// - `"already_ok"` — hooks are correct, nothing changed
@@ -207,12 +197,11 @@ fn backup_settings(path: &Path) {
 /// - `"updated"` — hooks existed but pointed to a stale path, now fixed
 pub fn ensure_hooks_installed(
     settings_path: &Path,
-    monitor_script: &str,
-    python: &str,
+    hook_binary: &str,
 ) -> Result<String, String> {
     let settings = load_settings(settings_path);
     let existing_hooks = settings.get("hooks").cloned().unwrap_or(json!({}));
-    let our_config = build_hook_configs(monitor_script, python);
+    let our_config = build_hook_configs(hook_binary);
 
     // Check whether all 6 events already have the correct command path.
     let mut all_ok = true;
@@ -349,14 +338,14 @@ struct CodexConfigToml {
 // Codex TOML configuration management
 // ---------------------------------------------------------------------------
 
-/// Build the Codex hook configs object with the 6 events pointing at `monitor_script`.
-fn build_codex_hook_configs(monitor_script: &str, python: &str) -> CodexHooksToml {
-    let command = format!("{python} \"{monitor_script}\"");
+/// Build the Codex hook configs object with the 6 events pointing at `hook_binary`.
+fn build_codex_hook_configs(hook_binary: &str) -> CodexHooksToml {
+    let escaped = hook_binary.replace('\\', "\\\\");
     let group = vec![CodexMatcherGroup {
         matcher: String::new(),
         hooks: vec![CodexHookHandler {
             handler_type: "command".to_string(),
-            command: command.clone(),
+            command: escaped.clone(),
         }],
     }];
     CodexHooksToml {
@@ -481,16 +470,15 @@ fn merge_codex_hooks(existing: &CodexHooksToml, ours: &CodexHooksToml) -> CodexH
     }
 }
 
-/// Ensure all 6 AgentPulse Codex hooks are present and point to `monitor_script`.
+/// Ensure all 6 AgentPulse Codex hooks are present and point to `hook_binary`.
 ///
 /// Returns `"already_ok"`, `"installed"`, or `"updated"`.
 pub fn ensure_codex_hooks_installed(
     config_path: &Path,
-    monitor_script: &str,
-    python: &str,
+    hook_binary: &str,
 ) -> Result<String, String> {
     let config = load_codex_config(config_path);
-    let our_hooks = build_codex_hook_configs(monitor_script, python);
+    let our_hooks = build_codex_hook_configs(hook_binary);
 
     let existing = config.hooks.clone().unwrap_or_default();
 
@@ -567,7 +555,7 @@ mod tests {
 
     #[test]
     fn test_build_hook_configs_has_all_events() {
-        let config = build_hook_configs("/tmp/monitor_hook.py", "python");
+        let config = build_hook_configs("/tmp/agentpulse-hook");
         for event in &HOOK_EVENTS {
             assert!(
                 config.get(event).is_some(),
@@ -578,20 +566,19 @@ mod tests {
 
     #[test]
     fn test_build_hook_configs_contains_command() {
-        let config = build_hook_configs("C:\\app\\monitor_hook.py", "python");
+        let config = build_hook_configs("C:\\app\\agentpulse-hook.exe");
         let session_start = &config["SessionStart"][0]["hooks"][0]["command"];
         let cmd = session_start.as_str().unwrap();
-        assert!(cmd.contains("python"), "expected python in command");
-        assert!(cmd.contains("monitor_hook.py"), "expected script path");
+        assert!(cmd.contains("agentpulse-hook"), "expected binary in command");
     }
 
     #[test]
     fn test_install_creates_settings_when_missing() {
         let dir = TempDir::new().unwrap();
         let settings_path = temp_settings_path(&dir);
-        let monitor_script = "/app/monitor_hook.py";
+        let hook_binary = "/app/agentpulse-hook";
 
-        let result = ensure_hooks_installed(&settings_path, monitor_script, "python");
+        let result = ensure_hooks_installed(&settings_path, hook_binary);
         assert!(result.is_ok());
         let status = result.unwrap();
         assert_eq!(status, "installed");
@@ -605,16 +592,16 @@ mod tests {
     fn test_install_is_idempotent() {
         let dir = TempDir::new().unwrap();
         let settings_path = temp_settings_path(&dir);
-        let monitor_script = "/app/monitor_hook.py";
+        let hook_binary = "/app/agentpulse-hook";
 
         // First call installs.
         assert_eq!(
-            ensure_hooks_installed(&settings_path, monitor_script, "python").unwrap(),
+            ensure_hooks_installed(&settings_path, hook_binary).unwrap(),
             "installed"
         );
         // Second call is no-op.
         assert_eq!(
-            ensure_hooks_installed(&settings_path, monitor_script, "python").unwrap(),
+            ensure_hooks_installed(&settings_path, hook_binary).unwrap(),
             "already_ok"
         );
     }
@@ -634,7 +621,7 @@ mod tests {
         });
         save_settings(&settings_path, &existing).unwrap();
 
-        let result = ensure_hooks_installed(&settings_path, "/app/monitor_hook.py", "python");
+        let result = ensure_hooks_installed(&settings_path, "/app/agentpulse-hook");
         assert!(result.is_ok());
 
         let settings = load_settings(&settings_path);
@@ -651,10 +638,10 @@ mod tests {
         let settings_path = temp_settings_path(&dir);
 
         // Install with old path.
-        ensure_hooks_installed(&settings_path, "/old/path/monitor_hook.py", "python").unwrap();
+        ensure_hooks_installed(&settings_path, "/old/path/agentpulse-hook").unwrap();
 
         // Now call with new path — should update.
-        let result = ensure_hooks_installed(&settings_path, "/new/path/monitor_hook.py", "python");
+        let result = ensure_hooks_installed(&settings_path, "/new/path/agentpulse-hook");
         assert_eq!(result.unwrap(), "updated");
 
         let settings = load_settings(&settings_path);
@@ -673,7 +660,7 @@ mod tests {
         });
         save_settings(&settings_path, &existing).unwrap();
 
-        ensure_hooks_installed(&settings_path, "/app/monitor_hook.py", "python").unwrap();
+        ensure_hooks_installed(&settings_path, "/app/agentpulse-hook").unwrap();
 
         let settings = load_settings(&settings_path);
         assert_eq!(settings["model"], "claude-sonnet-4-6");
@@ -696,7 +683,7 @@ mod tests {
                     {"type": "command", "command": "echo hello"}
                 ]}],
                 "SessionStart": [{"matcher": "", "hooks": [
-                    {"type": "command", "command": "python /x/monitor_hook.py"}
+                    {"type": "command", "command": "/x/agentpulse-hook"}
                 ]}]
             }
         });
@@ -733,7 +720,7 @@ mod tests {
         }
 
         // After install — all true.
-        ensure_hooks_installed(&settings_path, "/app/monitor_hook.py", "python").unwrap();
+        ensure_hooks_installed(&settings_path, "/app/agentpulse-hook").unwrap();
         let status = get_hook_status(&settings_path).unwrap();
         for v in status.values() {
             assert!(v);
@@ -747,20 +734,20 @@ mod tests {
         let bak_path = settings_path.with_extension("json.bak");
 
         // No backup if file didn't exist.
-        ensure_hooks_installed(&settings_path, "/app/monitor_hook.py", "python").unwrap();
+        ensure_hooks_installed(&settings_path, "/app/agentpulse-hook").unwrap();
         assert!(!bak_path.exists(), "backup should not exist for new file");
 
         // Simulate update — backup should be created.
         let existing = json!({
             "hooks": {
                 "SessionStart": [{"matcher": "", "hooks": [
-                    {"type": "command", "command": "python /old/monitor_hook.py"}
+                    {"type": "command", "command": "/old/agentpulse-hook"}
                 ]}]
             }
         });
         save_settings(&settings_path, &existing).unwrap();
 
-        ensure_hooks_installed(&settings_path, "/new/monitor_hook.py", "python").unwrap();
+        ensure_hooks_installed(&settings_path, "/new/agentpulse-hook").unwrap();
         assert!(bak_path.exists(), "backup should exist after update");
     }
 
@@ -768,7 +755,7 @@ mod tests {
 
     #[test]
     fn test_codex_hook_config_serializes_to_toml() {
-        let config = build_codex_hook_configs("/usr/local/bin/monitor_hook.py", "python3");
+        let config = build_codex_hook_configs("/usr/local/bin/agentpulse-hook");
         let toml_str = toml::to_string_pretty(&config).unwrap();
         assert!(toml_str.contains("SessionStart"));
         assert!(toml_str.contains("PreToolUse"));
@@ -776,8 +763,7 @@ mod tests {
         assert!(toml_str.contains("PermissionRequest"));
         assert!(toml_str.contains("UserPromptSubmit"));
         assert!(toml_str.contains("Stop"));
-        assert!(toml_str.contains("python3"));
-        assert!(toml_str.contains("monitor_hook.py"));
+        assert!(toml_str.contains("agentpulse-hook"));
     }
 
     #[test]
@@ -795,7 +781,7 @@ SomeOtherEvent = [
 "#;
         std::fs::write(&config_path, existing).unwrap();
 
-        let result = ensure_codex_hooks_installed(&config_path, "/app/monitor_hook.py", "python");
+        let result = ensure_codex_hooks_installed(&config_path, "/app/agentpulse-hook");
         assert!(result.is_ok());
 
         let content = std::fs::read_to_string(&config_path).unwrap();
@@ -810,11 +796,11 @@ SomeOtherEvent = [
         let config_path = dir.path().join("config.toml");
 
         assert_eq!(
-            ensure_codex_hooks_installed(&config_path, "/app/monitor_hook.py", "python").unwrap(),
+            ensure_codex_hooks_installed(&config_path, "/app/agentpulse-hook").unwrap(),
             "installed"
         );
         assert_eq!(
-            ensure_codex_hooks_installed(&config_path, "/app/monitor_hook.py", "python").unwrap(),
+            ensure_codex_hooks_installed(&config_path, "/app/agentpulse-hook").unwrap(),
             "already_ok"
         );
     }
@@ -832,7 +818,7 @@ SomeOtherEvent = [
         }
 
         // After install — all true
-        ensure_codex_hooks_installed(&config_path, "/app/monitor_hook.py", "python").unwrap();
+        ensure_codex_hooks_installed(&config_path, "/app/agentpulse-hook").unwrap();
         let status = get_codex_hook_status(&config_path).unwrap();
         for v in status.values() {
             assert!(v);
@@ -850,7 +836,7 @@ CustomEvent = [{ matcher = "", hooks = [{ type = "command", command = "echo hi" 
 "#;
         std::fs::write(&config_path, existing).unwrap();
 
-        ensure_codex_hooks_installed(&config_path, "/app/monitor_hook.py", "python").unwrap();
+        ensure_codex_hooks_installed(&config_path, "/app/agentpulse-hook").unwrap();
 
         let result = unregister_codex_hooks(&config_path);
         assert_eq!(result.unwrap(), "removed");

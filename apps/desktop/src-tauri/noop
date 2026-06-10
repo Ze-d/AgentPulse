@@ -16,3 +16,4 @@
 {"timestamp":"2026-06-10T03:10:52.211272Z","level":"INFO","fields":{"message":"AgentPulse hooks updated (path changed)","path":"C:\\Users\\pw\\AppData\\Local\\Temp\\.tmpjwJMOe\\settings.json"},"target":"agentpulse_lib::hooks"}
 {"timestamp":"2026-06-10T03:10:52.211258Z","level":"INFO","fields":{"message":"test message without file logging"},"target":"agentpulse_lib::logging::tests"}
 {"timestamp":"2026-06-10T06:41:56.202225Z","level":"INFO","fields":{"message":"test message without file logging"},"target":"agentpulse_lib::logging::tests"}
+{"timestamp":"2026-06-10T12:15:21.336426Z","level":"INFO","fields":{"message":"test message without file logging"},"target":"agentpulse_lib::logging::tests"}
