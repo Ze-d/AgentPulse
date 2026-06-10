@@ -170,6 +170,9 @@ pub fn run() {
             commands::get_hook_status_cmd,
             commands::install_hooks_cmd,
             commands::uninstall_hooks_cmd,
+            commands::get_codex_hook_status_cmd,
+            commands::install_codex_hooks_cmd,
+            commands::uninstall_codex_hooks_cmd,
             commands::hide_main_window,
             commands::log_event,
             commands::get_config,
@@ -254,7 +257,7 @@ pub fn run() {
 
             // Ensure hooks are installed on every launch (idempotent).
             let app_handle = app.handle().clone();
-            let python = python_for_hooks;
+            let python = python_for_hooks.clone();
             std::thread::spawn(move || {
                 let resource_dir = match app_handle.path().resource_dir() {
                     Ok(d) => d,
@@ -293,6 +296,50 @@ pub fn run() {
                         }
                     }
                     Err(e) => tracing::error!(error = %e, "failed to extract monitor script"),
+                }
+            });
+
+            // Ensure Codex hooks are installed on every launch (idempotent).
+            let app_handle2 = app.handle().clone();
+            let python2 = python_for_hooks;
+            std::thread::spawn(move || {
+                let resource_dir = match app_handle2.path().resource_dir() {
+                    Ok(d) => d,
+                    Err(e) => {
+                        tracing::error!(error = %e, "failed to get resource_dir for codex hook extraction");
+                        return;
+                    }
+                };
+                let app_data_dir = match app_handle2.path().app_data_dir() {
+                    Ok(d) => d,
+                    Err(e) => {
+                        tracing::error!(error = %e, "failed to get app_data_dir for codex hook extraction");
+                        return;
+                    }
+                };
+                let codex_config_path = match app_handle2
+                    .path()
+                    .resolve(".codex/config.toml", tauri::path::BaseDirectory::Home)
+                {
+                    Ok(p) => p,
+                    Err(e) => {
+                        tracing::error!(error = %e, "failed to resolve codex config path");
+                        return;
+                    }
+                };
+
+                match hooks::extract_monitor_script(&resource_dir, &app_data_dir) {
+                    Ok(monitor_path) => {
+                        match hooks::ensure_codex_hooks_installed(
+                            &codex_config_path,
+                            &monitor_path.to_string_lossy(),
+                            &python2,
+                        ) {
+                            Ok(status) => tracing::info!(status = %status, "Codex AgentPulse hooks"),
+                            Err(e) => tracing::error!(error = %e, "failed to ensure codex hooks installed"),
+                        }
+                    }
+                    Err(e) => tracing::error!(error = %e, "failed to extract monitor script for codex"),
                 }
             });
 

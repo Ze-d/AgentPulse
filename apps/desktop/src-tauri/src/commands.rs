@@ -104,6 +104,49 @@ pub fn uninstall_hooks_cmd(app_handle: tauri::AppHandle) -> Result<String, Strin
 }
 
 #[tauri::command]
+pub fn get_codex_hook_status_cmd(app_handle: tauri::AppHandle) -> Result<HashMap<String, bool>, String> {
+    tracing::debug!("get_codex_hook_status_cmd");
+    let config_path = app_handle
+        .path()
+        .resolve(".codex/config.toml", tauri::path::BaseDirectory::Home)
+        .map_err(|e| e.to_string())?;
+    hooks::get_codex_hook_status(&config_path)
+}
+
+#[tauri::command]
+pub fn install_codex_hooks_cmd(
+    app_handle: tauri::AppHandle,
+    state: State<AppState>,
+) -> Result<String, String> {
+    tracing::info!("user triggered codex hook installation");
+    let config_path = app_handle
+        .path()
+        .resolve(".codex/config.toml", tauri::path::BaseDirectory::Home)
+        .map_err(|e| e.to_string())?;
+    let resource_dir = app_handle
+        .path()
+        .resource_dir()
+        .map_err(|e| e.to_string())?;
+    let app_data_dir = app_handle
+        .path()
+        .app_data_dir()
+        .map_err(|e| e.to_string())?;
+    let monitor_path = hooks::extract_monitor_script(&resource_dir, &app_data_dir)?;
+    let python = hooks::resolve_python(state.config.python.as_deref());
+    hooks::ensure_codex_hooks_installed(&config_path, &monitor_path.to_string_lossy(), &python)
+}
+
+#[tauri::command]
+pub fn uninstall_codex_hooks_cmd(app_handle: tauri::AppHandle) -> Result<String, String> {
+    tracing::info!("user triggered codex hook removal");
+    let config_path = app_handle
+        .path()
+        .resolve(".codex/config.toml", tauri::path::BaseDirectory::Home)
+        .map_err(|e| e.to_string())?;
+    hooks::unregister_codex_hooks(&config_path)
+}
+
+#[tauri::command]
 pub fn hide_main_window(app_handle: tauri::AppHandle) -> Result<(), String> {
     tracing::trace!("hide_main_window called");
     let window = app_handle
