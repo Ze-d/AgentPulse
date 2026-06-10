@@ -55,11 +55,11 @@ _SHELL_NAMES = frozenset({
 })
 
 # Recognised agent binary names (used for PID detection fallback).
-_AGENT_BINARIES = frozenset({
-    "node.exe",       # Claude Code
-    "codex.exe",      # Codex CLI (Windows)
-    "codex",          # Codex CLI (Linux/macOS)
-})
+_AGENT_BINARIES = {
+    "node.exe": "claude-code",
+    "codex.exe": "codex",
+    "codex": "codex",
+}
 
 
 def read_stdin() -> dict | None:
@@ -75,25 +75,21 @@ def read_stdin() -> dict | None:
         sys.exit(1)
 
 
-def _find_agent_pid() -> int:
-    """Walk up the parent chain to find the agent process PID.
+def _detect_agent_info() -> tuple[int, str]:
+    """Walk up the parent chain to find the agent PID and determine its source.
 
-    The agent spawns hook commands through a shell (cmd.exe / powershell.exe),
-    so ``os.getppid()`` returns the shell PID which exits instantly. We walk
-    upward until we find a non-shell process, preferably a recognised agent
-    binary, and return its PID.
-
-    Falls back to ``os.getppid()`` on error or non-Windows platforms.
+    Returns (pid, agent_source). Falls back to (ppid, "codex").
     """
     if sys.platform != "win32":
-        return os.getppid()
+        return os.getppid(), "codex"
 
     try:
         pid_to_parent, pid_to_name = _snapshot_processes()
 
         cur = os.getpid()
         last_non_shell = cur
-        for _ in range(5):  # safety limit
+        detected_source = "codex"  # default for this adapter
+        for _ in range(5):
             parent = pid_to_parent.get(cur)
             if parent is None:
                 break
@@ -101,12 +97,12 @@ def _find_agent_pid() -> int:
             if name not in _SHELL_NAMES:
                 last_non_shell = parent
                 if name in _AGENT_BINARIES:
-                    return parent
+                    return parent, _AGENT_BINARIES[name]
             cur = parent
 
-        return last_non_shell or os.getppid()
+        return last_non_shell, detected_source
     except Exception:
-        return os.getppid()
+        return os.getppid(), "codex"
 
 
 def _snapshot_processes() -> tuple[dict[int, int], dict[int, str]]:
@@ -209,11 +205,12 @@ def main():
     if hook_data is None:
         sys.exit(0)
 
-    # Inject the agent source so the server can route to normalize_codex_event.
-    hook_data["agent_source"] = "codex"
+    # Walk up the process tree to find the agent PID and source.
+    process_pid, agent_source = _detect_agent_info()
+    hook_data["process_pid"] = process_pid
+    hook_data["agent_source"] = agent_source
 
-    # Walk up the process tree to find the agent PID.
-    hook_data["process_pid"] = _find_agent_pid()
+    logger.debug("detected agent: source=%s pid=%d", agent_source, process_pid)
 
     if args.test:
         print(json.dumps(hook_data, indent=2))

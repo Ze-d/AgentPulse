@@ -137,6 +137,8 @@ pub fn normalize_codex_event(raw: &serde_json::Value) -> AgentEvent {
 /// - `"codex"` → `normalize_codex_event`
 /// - missing / `"claude-code"` / anything else → `normalize_claude_code_event` (backward compatible)
 pub fn normalize_event_by_source(raw: &serde_json::Value) -> AgentEvent {
+    let agent_source = raw["agent_source"].as_str().unwrap_or("(none)");
+    tracing::debug!(agent_source, "normalize_event_by_source dispatching");
     match raw["agent_source"].as_str() {
         Some("codex") => normalize_codex_event(raw),
         _ => normalize_claude_code_event(raw),
@@ -315,6 +317,7 @@ impl EventServer {
                                     Ok((event, session)) => {
                                         tracing::info!(
                                             session_id = %event.session_id,
+                                            source = ?event.source,
                                             event_type = ?event.event_type,
                                             status = ?session.status,
                                             "event processed"

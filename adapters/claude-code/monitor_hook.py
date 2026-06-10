@@ -55,13 +55,13 @@ _SHELL_NAMES = frozenset({
     "sh.exe", "bash.exe", "conhost.exe",
 })
 
-_AGENT_BINARIES = frozenset({
-    "node.exe",       # Claude Code
-    "codex.exe",      # Codex CLI (Windows)
-    "codex",          # Codex CLI (Linux/macOS)
-    "gemini",         # Gemini CLI (future)
-    "copilot",        # GitHub Copilot CLI (future)
-})
+_AGENT_BINARIES = {
+    "node.exe": "claude-code",
+    "codex.exe": "codex",
+    "codex": "codex",
+    "gemini": "gemini",
+    "copilot": "copilot",
+}
 
 
 def read_stdin() -> dict | None:
@@ -77,24 +77,25 @@ def read_stdin() -> dict | None:
         sys.exit(1)
 
 
-def _find_agent_pid() -> int:
-    """Walk up the parent chain to find the agent process PID.
+def _detect_agent_info() -> tuple[int, str]:
+    """Walk up the parent chain to find the agent PID and determine its source.
 
     The agent spawns hook commands through a shell (cmd.exe / powershell.exe),
     so ``os.getppid()`` returns the shell PID which exits instantly. We walk
-    upward until we find a non-shell process, preferably a recognised agent
-    binary, and return its PID.
+    upward until we find a non-shell process, identify its binary name, and
+    return (pid, agent_source).
 
-    Falls back to ``os.getppid()`` on error or non-Windows platforms.
+    Returns (ppid, "claude-code") as fallback on error or non-Windows.
     """
     if sys.platform != "win32":
-        return os.getppid()
+        return os.getppid(), "claude-code"
 
     try:
         pid_to_parent, pid_to_name = _snapshot_processes()
 
         cur = os.getpid()
         last_non_shell = cur
+        detected_source = "claude-code"  # default
         for _ in range(5):  # safety limit
             parent = pid_to_parent.get(cur)
             if parent is None:
@@ -103,12 +104,12 @@ def _find_agent_pid() -> int:
             if name not in _SHELL_NAMES:
                 last_non_shell = parent
                 if name in _AGENT_BINARIES:
-                    return parent
+                    return parent, _AGENT_BINARIES[name]
             cur = parent
 
-        return last_non_shell or os.getppid()
+        return last_non_shell, detected_source
     except Exception:
-        return os.getppid()
+        return os.getppid(), "claude-code"
 
 
 def _snapshot_processes() -> tuple[dict[int, int], dict[int, str]]:
@@ -211,10 +212,15 @@ def main():
     if hook_data is None:
         sys.exit(0)
 
-    # Walk up the process tree to find the Claude Code (node.exe) PID.
-    # os.getppid() would give us the shell that spawned us — that exits
-    # instantly, so we walk past shell wrappers to the real CC process.
-    hook_data["process_pid"] = _find_agent_pid()
+    # Walk up the process tree to find the agent PID and determine its
+    # source (claude-code / codex / gemini / copilot).  os.getppid()
+    # would give us the shell that spawned us — that exits instantly,
+    # so we walk past shell wrappers to the real agent process.
+    process_pid, agent_source = _detect_agent_info()
+    hook_data["process_pid"] = process_pid
+    hook_data["agent_source"] = agent_source
+
+    logger.debug("detected agent: source=%s pid=%d", agent_source, process_pid)
 
     if args.test:
         print(json.dumps(hook_data, indent=2))
