@@ -132,6 +132,17 @@ pub fn normalize_codex_event(raw: &serde_json::Value) -> AgentEvent {
     }
 }
 
+/// Dispatch to the appropriate normalizer based on the `agent_source` field.
+///
+/// - `"codex"` → `normalize_codex_event`
+/// - missing / `"claude-code"` / anything else → `normalize_claude_code_event` (backward compatible)
+pub fn normalize_event_by_source(raw: &serde_json::Value) -> AgentEvent {
+    match raw["agent_source"].as_str() {
+        Some("codex") => normalize_codex_event(raw),
+        _ => normalize_claude_code_event(raw),
+    }
+}
+
 /// HTTP server that receives Claude Code hook events, normalizes them,
 /// applies the state machine, and persists the results via the `Database`.
 pub struct EventServer {
@@ -171,7 +182,7 @@ impl EventServer {
         &self,
         raw: &serde_json::Value,
     ) -> Result<(AgentEvent, AgentSession), String> {
-        let event = normalize_claude_code_event(raw);
+        let event = normalize_event_by_source(raw);
 
         let db = self.db.lock().map_err(|e| format!("lock error: {}", e))?;
         let machine = StateMachine::new();

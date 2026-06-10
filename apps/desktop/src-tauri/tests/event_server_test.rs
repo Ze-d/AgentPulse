@@ -217,3 +217,47 @@ fn test_normalize_codex_process_pid_passthrough() {
     let event = normalize_codex_event(&raw);
     assert_eq!(event.process_pid, Some(4242));
 }
+
+// ── agent_source-based dispatching tests ──
+
+#[test]
+fn test_normalize_dispatches_codex_by_agent_source_field() {
+    let raw = serde_json::json!({
+        "agent_source": "codex",
+        "session_id": "cx-dispatch",
+        "cwd": "/home/user/proj",
+        "hook_event_name": "Stop"
+    });
+
+    let event = normalize_event_by_source(&raw);
+    assert_eq!(event.source, AgentSource::Codex);
+    assert_eq!(event.status, AgentStatus::Completed);
+}
+
+#[test]
+fn test_normalize_dispatches_claude_when_no_agent_source_field() {
+    // Backward compatible: events without agent_source default to ClaudeCode
+    let raw = serde_json::json!({
+        "session_id": "cc-dispatch",
+        "cwd": "/home/user/proj",
+        "hook_event_name": "Stop"
+    });
+
+    let event = normalize_event_by_source(&raw);
+    assert_eq!(event.source, AgentSource::ClaudeCode);
+    assert_eq!(event.status, AgentStatus::Completed);
+}
+
+#[test]
+fn test_normalize_dispatches_claude_when_unknown_agent_source() {
+    let raw = serde_json::json!({
+        "agent_source": "some-future-agent",
+        "session_id": "future-dispatch",
+        "cwd": "/tmp",
+        "hook_event_name": "Stop"
+    });
+
+    let event = normalize_event_by_source(&raw);
+    // Unknown sources fall back to ClaudeCode
+    assert_eq!(event.source, AgentSource::ClaudeCode);
+}
