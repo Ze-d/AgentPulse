@@ -1,0 +1,22 @@
+[package]
+name = "agentpulse-hook"
+version = "0.4.0"
+description = "AgentPulse hook adapter — zero-dependency event forwarder and hook manager"
+authors = ["Kal_zed"]
+repository = "https://github.com/Ze-d/AgentPulse"
+license = "MIT"
+edition = "2021"
+
+[[bin]]
+name = "agentpulse-hook"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+ureq = "2"
+sysinfo = "0.31"
+log = "0.4"
+env_logger = "0.11"
