@@ -102,25 +102,35 @@ pub fn extract_monitor_script(resource_dir: &Path, app_data_dir: &Path) -> Resul
 
 /// Resolve the Python interpreter to use in hook commands.
 ///
-/// When `hint` is `Some`, it is used directly (from config or env override).
-/// Otherwise probes `python3`, then falls back to `python`. On Windows,
-/// `python3` typically doesn't exist so the fallback handles it naturally.
+/// When `hint` is `Some`, it is used directly.  Otherwise probes
+/// candidates and, once a working interpreter is found, asks it for
+/// its own absolute path via `sys.executable` so that hook commands
+/// work even when the target agent runs in a different environment
+/// (e.g. Codex App Server on Windows where `python3` may not be on
+/// PATH even though it is available in the current shell).
 pub(crate) fn resolve_python(hint: Option<&str>) -> String {
     if let Some(p) = hint {
         tracing::debug!(python = %p, "using python from config");
         return p.to_string();
     }
     for candidate in &["python3", "python"] {
-        if std::process::Command::new(candidate)
-            .arg("--version")
+        if let Ok(output) = std::process::Command::new(candidate)
+            .arg("-c")
+            .arg("import sys; print(sys.executable)")
             .output()
-            .map(|o| o.status.success())
-            .unwrap_or(false)
         {
-            tracing::debug!(python = candidate, "resolved python interpreter");
-            return candidate.to_string();
+            if output.status.success() {
+                let path = String::from_utf8_lossy(&output.stdout)
+                    .trim()
+                    .to_string();
+                if !path.is_empty() {
+                    tracing::debug!(python = %path, "resolved python absolute path");
+                    return path;
+                }
+            }
         }
     }
+    // Final fallback — hope for the best.
     tracing::debug!("python interpreter not found, defaulting to 'python'");
     "python".to_string()
 }
