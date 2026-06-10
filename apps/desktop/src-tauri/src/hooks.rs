@@ -9,6 +9,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 /// The 6 Claude Code hook events that AgentPulse subscribes to.
@@ -18,6 +19,16 @@ const HOOK_EVENTS: [&str; 6] = [
     "PostToolUse",
     "PostToolUseFailure",
     "Notification",
+    "Stop",
+];
+
+/// The 6 Codex hook events that AgentPulse subscribes to.
+const CODEX_HOOK_EVENTS: [&str; 6] = [
+    "SessionStart",
+    "PreToolUse",
+    "PostToolUse",
+    "PermissionRequest",
+    "UserPromptSubmit",
     "Stop",
 ];
 
@@ -282,6 +293,256 @@ pub fn get_hook_status(settings_path: &Path) -> Result<HashMap<String, bool>, St
 }
 
 // ---------------------------------------------------------------------------
+// Codex TOML types
+// ---------------------------------------------------------------------------
+
+/// Serializable TOML structure for a single Codex hook handler.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+struct CodexHookHandler {
+    #[serde(rename = "type")]
+    handler_type: String,
+    command: String,
+}
+
+/// Serializable TOML structure for a Codex matcher group.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+struct CodexMatcherGroup {
+    matcher: String,
+    hooks: Vec<CodexHookHandler>,
+}
+
+/// Serializable TOML structure for the `[hooks]` section in `~/.codex/config.toml`.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Default)]
+struct CodexHooksToml {
+    #[serde(rename = "SessionStart", default)]
+    session_start: Vec<CodexMatcherGroup>,
+    #[serde(rename = "PreToolUse", default)]
+    pre_tool_use: Vec<CodexMatcherGroup>,
+    #[serde(rename = "PostToolUse", default)]
+    post_tool_use: Vec<CodexMatcherGroup>,
+    #[serde(rename = "PermissionRequest", default)]
+    permission_request: Vec<CodexMatcherGroup>,
+    #[serde(rename = "UserPromptSubmit", default)]
+    user_prompt_submit: Vec<CodexMatcherGroup>,
+    #[serde(rename = "Stop", default)]
+    stop: Vec<CodexMatcherGroup>,
+}
+
+/// Serializable TOML structure for the entire `~/.codex/config.toml` that we care about.
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+struct CodexConfigToml {
+    #[serde(default)]
+    hooks: Option<CodexHooksToml>,
+}
+
+// ---------------------------------------------------------------------------
+// Codex TOML configuration management
+// ---------------------------------------------------------------------------
+
+/// Build the Codex hook configs object with the 6 events pointing at `monitor_script`.
+fn build_codex_hook_configs(monitor_script: &str, python: &str) -> CodexHooksToml {
+    let command = format!("{python} \"{monitor_script}\"");
+    let group = vec![CodexMatcherGroup {
+        matcher: String::new(),
+        hooks: vec![CodexHookHandler {
+            handler_type: "command".to_string(),
+            command: command.clone(),
+        }],
+    }];
+    CodexHooksToml {
+        session_start: group.clone(),
+        pre_tool_use: group.clone(),
+        post_tool_use: group.clone(),
+        permission_request: group.clone(),
+        user_prompt_submit: group.clone(),
+        stop: group,
+    }
+}
+
+/// Load a Codex config.toml, returning the parsed struct or an empty default.
+fn load_codex_config(path: &Path) -> CodexConfigToml {
+    match std::fs::read_to_string(path) {
+        Ok(s) => toml::from_str(&s).unwrap_or_else(|e| {
+            tracing::warn!(
+                path = %path.display(),
+                error = %e,
+                "failed to parse codex config.toml, treating as empty"
+            );
+            CodexConfigToml::default()
+        }),
+        Err(_) => CodexConfigToml::default(),
+    }
+}
+
+/// Save our Codex hooks to disk, preserving all existing TOML keys and
+/// non-AgentPulse hook entries.
+fn save_codex_config(path: &Path, hooks: &CodexHooksToml) -> Result<(), String> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| format!("create dir {}: {e}", parent.display()))?;
+    }
+
+    // Read existing file as raw TOML value.
+    let existing_raw: toml::Value = std::fs::read_to_string(path)
+        .ok()
+        .and_then(|s| toml::from_str(&s).ok())
+        .unwrap_or(toml::Value::Table(toml::Table::new()));
+
+    let mut root_table = match existing_raw {
+        toml::Value::Table(t) => t,
+        other => {
+            let mut t = toml::Table::new();
+            t.insert("__previous_root".to_string(), other);
+            t
+        }
+    };
+
+    // Grab the existing [hooks] table, or start a new one.
+    let existing_hooks = root_table
+        .remove("hooks")
+        .and_then(|v| match v {
+            toml::Value::Table(t) => Some(t),
+            _ => None,
+        })
+        .unwrap_or_default();
+
+    // Merge: for each of our 6 events, set our entry, but keep others.
+    let mut merged_hooks = existing_hooks;
+    let hooks_str = toml::to_string(hooks).map_err(|e| format!("serialize hooks: {e}"))?;
+    let our_value: toml::Value = toml::from_str(&hooks_str).map_err(|e| format!("parse hooks: {e}"))?;
+    if let toml::Value::Table(our_table) = our_value {
+        for (key, value) in our_table {
+            let is_empty = matches!(&value, toml::Value::Array(arr) if arr.is_empty());
+            if is_empty {
+                merged_hooks.remove(&key);
+            } else {
+                merged_hooks.insert(key, value);
+            }
+        }
+    }
+
+    root_table.insert("hooks".to_string(), toml::Value::Table(merged_hooks));
+
+    let new_raw = toml::Value::Table(root_table);
+    let toml_str = toml::to_string_pretty(&new_raw).map_err(|e| format!("serialize: {e}"))?;
+    std::fs::write(path, &toml_str).map_err(|e| format!("write {}: {e}", path.display()))?;
+    tracing::debug!(path = %path.display(), len = toml_str.len(), "codex config.toml saved");
+    Ok(())
+}
+
+/// Check if our hook definitions match the existing ones exactly.
+fn hooks_are_equal(existing: &CodexHooksToml, ours: &CodexHooksToml) -> bool {
+    get_codex_event_groups(existing, "SessionStart") == get_codex_event_groups(ours, "SessionStart")
+        && get_codex_event_groups(existing, "PreToolUse") == get_codex_event_groups(ours, "PreToolUse")
+        && get_codex_event_groups(existing, "PostToolUse") == get_codex_event_groups(ours, "PostToolUse")
+        && get_codex_event_groups(existing, "PermissionRequest") == get_codex_event_groups(ours, "PermissionRequest")
+        && get_codex_event_groups(existing, "UserPromptSubmit") == get_codex_event_groups(ours, "UserPromptSubmit")
+        && get_codex_event_groups(existing, "Stop") == get_codex_event_groups(ours, "Stop")
+}
+
+/// Get the matcher groups for a specific Codex event by name.
+fn get_codex_event_groups(hooks: &CodexHooksToml, event: &str) -> Vec<CodexMatcherGroup> {
+    match event {
+        "SessionStart" => hooks.session_start.clone(),
+        "PreToolUse" => hooks.pre_tool_use.clone(),
+        "PostToolUse" => hooks.post_tool_use.clone(),
+        "PermissionRequest" => hooks.permission_request.clone(),
+        "UserPromptSubmit" => hooks.user_prompt_submit.clone(),
+        "Stop" => hooks.stop.clone(),
+        _ => vec![],
+    }
+}
+
+/// Check whether a Codex event has any registered hooks.
+fn has_codex_event(hooks: &CodexHooksToml, event: &str) -> bool {
+    !get_codex_event_groups(hooks, event).is_empty()
+}
+
+/// Merge our hook definitions into the existing ones.  For events we manage,
+/// our definitions win; other events are left untouched.
+fn merge_codex_hooks(existing: &CodexHooksToml, ours: &CodexHooksToml) -> CodexHooksToml {
+    CodexHooksToml {
+        session_start: if ours.session_start.is_empty() { existing.session_start.clone() } else { ours.session_start.clone() },
+        pre_tool_use: if ours.pre_tool_use.is_empty() { existing.pre_tool_use.clone() } else { ours.pre_tool_use.clone() },
+        post_tool_use: if ours.post_tool_use.is_empty() { existing.post_tool_use.clone() } else { ours.post_tool_use.clone() },
+        permission_request: if ours.permission_request.is_empty() { existing.permission_request.clone() } else { ours.permission_request.clone() },
+        user_prompt_submit: if ours.user_prompt_submit.is_empty() { existing.user_prompt_submit.clone() } else { ours.user_prompt_submit.clone() },
+        stop: if ours.stop.is_empty() { existing.stop.clone() } else { ours.stop.clone() },
+    }
+}
+
+/// Ensure all 6 AgentPulse Codex hooks are present and point to `monitor_script`.
+///
+/// Returns `"already_ok"`, `"installed"`, or `"updated"`.
+pub fn ensure_codex_hooks_installed(
+    config_path: &Path,
+    monitor_script: &str,
+    python: &str,
+) -> Result<String, String> {
+    let config = load_codex_config(config_path);
+    let our_hooks = build_codex_hook_configs(monitor_script, python);
+
+    let existing = config.hooks.clone().unwrap_or_default();
+
+    if hooks_are_equal(&existing, &our_hooks) {
+        return Ok("already_ok".to_string());
+    }
+
+    let merged = merge_codex_hooks(&existing, &our_hooks);
+
+    save_codex_config(config_path, &merged)?;
+
+    let had_any = CODEX_HOOK_EVENTS.iter().any(|e| has_codex_event(&existing, e));
+
+    if had_any {
+        tracing::info!(path = %config_path.display(), "Codex AgentPulse hooks updated");
+        Ok("updated".to_string())
+    } else {
+        tracing::info!(path = %config_path.display(), "Codex AgentPulse hooks installed");
+        Ok("installed".to_string())
+    }
+}
+
+/// Remove the 6 AgentPulse Codex hook events from config.toml.
+pub fn unregister_codex_hooks(config_path: &Path) -> Result<String, String> {
+    if !config_path.exists() {
+        return Ok("no_config_file".to_string());
+    }
+
+    // Read and manipulate at the TOML level to cleanly remove our keys.
+    let raw = std::fs::read_to_string(config_path)
+        .map_err(|e| format!("read {}: {e}", config_path.display()))?;
+    let mut root: toml::Value = toml::from_str(&raw)
+        .map_err(|e| format!("parse {}: {e}", config_path.display()))?;
+
+    if let toml::Value::Table(ref mut root_table) = root {
+        if let Some(toml::Value::Table(ref mut hooks_table)) = root_table.get_mut("hooks") {
+            for event in &CODEX_HOOK_EVENTS {
+                hooks_table.remove(*event);
+            }
+        }
+    }
+
+    let toml_str = toml::to_string_pretty(&root).map_err(|e| format!("serialize: {e}"))?;
+    std::fs::write(config_path, &toml_str)
+        .map_err(|e| format!("write {}: {e}", config_path.display()))?;
+
+    Ok("removed".to_string())
+}
+
+/// Return `{event_name: bool}` indicating which Codex hooks are installed.
+pub fn get_codex_hook_status(config_path: &Path) -> Result<HashMap<String, bool>, String> {
+    let config = load_codex_config(config_path);
+    let hooks = config.hooks.unwrap_or_default();
+
+    let mut status = HashMap::new();
+    for event in &CODEX_HOOK_EVENTS {
+        status.insert(event.to_string(), has_codex_event(&hooks, event));
+    }
+    Ok(status)
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
@@ -491,5 +752,109 @@ mod tests {
 
         ensure_hooks_installed(&settings_path, "/new/monitor_hook.py", "python").unwrap();
         assert!(bak_path.exists(), "backup should exist after update");
+    }
+
+    // ── Codex TOML tests ──
+
+    #[test]
+    fn test_codex_hook_config_serializes_to_toml() {
+        let config = build_codex_hook_configs("/usr/local/bin/monitor_hook.py", "python3");
+        let toml_str = toml::to_string_pretty(&config).unwrap();
+        assert!(toml_str.contains("SessionStart"));
+        assert!(toml_str.contains("PreToolUse"));
+        assert!(toml_str.contains("PostToolUse"));
+        assert!(toml_str.contains("PermissionRequest"));
+        assert!(toml_str.contains("UserPromptSubmit"));
+        assert!(toml_str.contains("Stop"));
+        assert!(toml_str.contains("python3"));
+        assert!(toml_str.contains("monitor_hook.py"));
+    }
+
+    #[test]
+    fn test_codex_install_merges_with_existing_config() {
+        let dir = TempDir::new().unwrap();
+        let config_path = dir.path().join("config.toml");
+
+        let existing = r#"
+model = "gpt-5"
+
+[hooks]
+SomeOtherEvent = [
+    { matcher = "", hooks = [{ type = "command", command = "echo hi" }] }
+]
+"#;
+        std::fs::write(&config_path, existing).unwrap();
+
+        let result = ensure_codex_hooks_installed(&config_path, "/app/monitor_hook.py", "python");
+        assert!(result.is_ok());
+
+        let content = std::fs::read_to_string(&config_path).unwrap();
+        assert!(content.contains("SomeOtherEvent"));
+        assert!(content.contains("SessionStart"));
+        assert!(content.contains("model"));
+    }
+
+    #[test]
+    fn test_codex_install_is_idempotent() {
+        let dir = TempDir::new().unwrap();
+        let config_path = dir.path().join("config.toml");
+
+        assert_eq!(
+            ensure_codex_hooks_installed(&config_path, "/app/monitor_hook.py", "python").unwrap(),
+            "installed"
+        );
+        assert_eq!(
+            ensure_codex_hooks_installed(&config_path, "/app/monitor_hook.py", "python").unwrap(),
+            "already_ok"
+        );
+    }
+
+    #[test]
+    fn test_codex_get_hook_status() {
+        let dir = TempDir::new().unwrap();
+        let config_path = dir.path().join("config.toml");
+
+        // Empty — all false
+        let status = get_codex_hook_status(&config_path).unwrap();
+        assert_eq!(status.len(), 6);
+        for v in status.values() {
+            assert!(!v);
+        }
+
+        // After install — all true
+        ensure_codex_hooks_installed(&config_path, "/app/monitor_hook.py", "python").unwrap();
+        let status = get_codex_hook_status(&config_path).unwrap();
+        for v in status.values() {
+            assert!(v);
+        }
+    }
+
+    #[test]
+    fn test_codex_unregister_removes_only_our_hooks() {
+        let dir = TempDir::new().unwrap();
+        let config_path = dir.path().join("config.toml");
+
+        let existing = r#"
+[hooks]
+CustomEvent = [{ matcher = "", hooks = [{ type = "command", command = "echo hi" }] }]
+"#;
+        std::fs::write(&config_path, existing).unwrap();
+
+        ensure_codex_hooks_installed(&config_path, "/app/monitor_hook.py", "python").unwrap();
+
+        let result = unregister_codex_hooks(&config_path);
+        assert_eq!(result.unwrap(), "removed");
+
+        let content = std::fs::read_to_string(&config_path).unwrap();
+        assert!(content.contains("CustomEvent"));
+        assert!(!content.contains("SessionStart"));
+    }
+
+    #[test]
+    fn test_codex_unregister_missing_file() {
+        let dir = TempDir::new().unwrap();
+        let config_path = dir.path().join("nonexistent.toml");
+        let result = unregister_codex_hooks(&config_path);
+        assert_eq!(result.unwrap(), "no_config_file");
     }
 }
