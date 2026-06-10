@@ -1,23 +1,22 @@
 #!/usr/bin/env python3
 """
-Claude Code monitor hook for AgentPulse.
+Codex CLI monitor hook for AgentPulse.
 
-Reads hook JSON from stdin (Claude Code passes hook data via stdin),
-and POSTs it to the local AgentPulse event server.
+Reads hook JSON from stdin (Codex CLI passes hook data via stdin),
+injects `agent_source: "codex"` and `process_pid`, then POSTs to the
+local AgentPulse event server.
 
-Usage in Claude Code settings.json:
-  {
-    "hooks": {
-      "PostToolUse": [
-        {
-          "matcher": "",
-          "hooks": [
-            { "type": "command", "command": "python /path/to/monitor_hook.py" }
-          ]
-        }
-      ]
-    }
-  }
+The hook JSON format from Codex is structurally identical to Claude Code:
+  - session_id, cwd, hook_event_name, transcript_path
+  - Plus Codex-specific fields: model, permission_mode, turn_id
+
+Usage in ~/.codex/config.toml:
+  [hooks]
+  SessionStart = [
+    { matcher = "", hooks = [
+      { type = "command", command = "python /path/to/monitor_hook.py" }
+    ]}
+  ]
 
 Environment variables:
   AGENTPULSE_URL         - Event server URL (default: http://127.0.0.1:17878/api/events)
@@ -43,24 +42,23 @@ RETRY_DELAY = 1.0
 
 logging.basicConfig(
     level=getattr(logging, os.environ.get("AGENTPULSE_LOG_LEVEL", "INFO")),
-    format="%(asctime)s [AgentPulse] %(levelname)s %(message)s",
+    format="%(asctime)s [AgentPulse:Codex] %(levelname)s %(message)s",
     stream=sys.stderr,
 )
 logger = logging.getLogger(__name__)
 
 
-# Shell process names that sit between Claude Code and our hook script.
+# Shell process names that sit between the agent and our hook script.
 _SHELL_NAMES = frozenset({
     "cmd.exe", "powershell.exe", "pwsh.exe",
     "sh.exe", "bash.exe", "conhost.exe",
 })
 
+# Recognised agent binary names (used for PID detection fallback).
 _AGENT_BINARIES = frozenset({
     "node.exe",       # Claude Code
     "codex.exe",      # Codex CLI (Windows)
     "codex",          # Codex CLI (Linux/macOS)
-    "gemini",         # Gemini CLI (future)
-    "copilot",        # GitHub Copilot CLI (future)
 })
 
 
@@ -112,7 +110,7 @@ def _find_agent_pid() -> int:
 
 
 def _snapshot_processes() -> tuple[dict[int, int], dict[int, str]]:
-    """Take a process snapshot and return (pid→parent_pid, pid→name)."""
+    """Take a process snapshot and return (pid->parent_pid, pid->name)."""
     TH32CS_SNAPPROCESS = 0x00000002
     INVALID_HANDLE_VALUE = ctypes.c_void_p(-1).value
 
@@ -198,7 +196,7 @@ def send_event(url: str, data: dict, timeout: int) -> int:
 
 def main():
     parser = argparse.ArgumentParser(
-        description="AgentPulse Claude Code monitor hook"
+        description="AgentPulse Codex CLI monitor hook"
     )
     parser.add_argument(
         "--test",
@@ -211,9 +209,10 @@ def main():
     if hook_data is None:
         sys.exit(0)
 
-    # Walk up the process tree to find the Claude Code (node.exe) PID.
-    # os.getppid() would give us the shell that spawned us — that exits
-    # instantly, so we walk past shell wrappers to the real CC process.
+    # Inject the agent source so the server can route to normalize_codex_event.
+    hook_data["agent_source"] = "codex"
+
+    # Walk up the process tree to find the agent PID.
     hook_data["process_pid"] = _find_agent_pid()
 
     if args.test:
