@@ -270,80 +270,98 @@ fn test_codex_full_session_lifecycle_normalizes_all_events() {
     let session_id = "cx-lifecycle-001";
 
     let events = vec![
-        (serde_json::json!({
-            "agent_source": "codex",
-            "session_id": session_id,
-            "cwd": "/home/user/cx-proj",
-            "hook_event_name": "SessionStart",
-            "transcript_path": "/tmp/transcript.json",
-            "model": "gpt-5",
-            "permission_mode": "default",
-            "source": "startup",
-            "turn_id": "turn-1",
-            "process_pid": 9999
-        }), AgentStatus::Starting),
-        (serde_json::json!({
-            "agent_source": "codex",
-            "session_id": session_id,
-            "cwd": "/home/user/cx-proj",
-            "hook_event_name": "PreToolUse",
-            "tool_name": "Write",
-            "tool_input": {"path": "main.rs"},
-            "tool_use_id": "tu-1",
-            "turn_id": "turn-1",
-            "transcript_path": null,
-            "model": "gpt-5",
-            "permission_mode": "default"
-        }), AgentStatus::ToolRunning),
-        (serde_json::json!({
-            "agent_source": "codex",
-            "session_id": session_id,
-            "cwd": "/home/user/cx-proj",
-            "hook_event_name": "PostToolUse",
-            "tool_name": "Write",
-            "tool_input": {"path": "main.rs"},
-            "tool_response": null,
-            "tool_use_id": "tu-1",
-            "turn_id": "turn-1",
-            "transcript_path": null,
-            "model": "gpt-5",
-            "permission_mode": "default"
-        }), AgentStatus::Running),
-        (serde_json::json!({
-            "agent_source": "codex",
-            "session_id": session_id,
-            "cwd": "/home/user/cx-proj",
-            "hook_event_name": "PermissionRequest",
-            "tool_name": "Bash",
-            "tool_input": {"command": "rm file"},
-            "turn_id": "turn-1",
-            "transcript_path": null,
-            "model": "gpt-5",
-            "permission_mode": "default"
-        }), AgentStatus::WaitingPermission),
-        (serde_json::json!({
-            "agent_source": "codex",
-            "session_id": session_id,
-            "cwd": "/home/user/cx-proj",
-            "hook_event_name": "UserPromptSubmit",
-            "prompt": "please continue",
-            "turn_id": "turn-2",
-            "transcript_path": null,
-            "model": "gpt-5",
-            "permission_mode": "default"
-        }), AgentStatus::Running),
-        (serde_json::json!({
-            "agent_source": "codex",
-            "session_id": session_id,
-            "cwd": "/home/user/cx-proj",
-            "hook_event_name": "Stop",
-            "last_assistant_message": "All done!",
-            "stop_hook_active": false,
-            "turn_id": "turn-2",
-            "transcript_path": null,
-            "model": "gpt-5",
-            "permission_mode": "default"
-        }), AgentStatus::Completed),
+        (
+            serde_json::json!({
+                "agent_source": "codex",
+                "session_id": session_id,
+                "cwd": "/home/user/cx-proj",
+                "hook_event_name": "SessionStart",
+                "transcript_path": "/tmp/transcript.json",
+                "model": "gpt-5",
+                "permission_mode": "default",
+                "source": "startup",
+                "turn_id": "turn-1",
+                "process_pid": 9999
+            }),
+            AgentStatus::Starting,
+        ),
+        (
+            serde_json::json!({
+                "agent_source": "codex",
+                "session_id": session_id,
+                "cwd": "/home/user/cx-proj",
+                "hook_event_name": "PreToolUse",
+                "tool_name": "Write",
+                "tool_input": {"path": "main.rs"},
+                "tool_use_id": "tu-1",
+                "turn_id": "turn-1",
+                "transcript_path": null,
+                "model": "gpt-5",
+                "permission_mode": "default"
+            }),
+            AgentStatus::ToolRunning,
+        ),
+        (
+            serde_json::json!({
+                "agent_source": "codex",
+                "session_id": session_id,
+                "cwd": "/home/user/cx-proj",
+                "hook_event_name": "PostToolUse",
+                "tool_name": "Write",
+                "tool_input": {"path": "main.rs"},
+                "tool_response": null,
+                "tool_use_id": "tu-1",
+                "turn_id": "turn-1",
+                "transcript_path": null,
+                "model": "gpt-5",
+                "permission_mode": "default"
+            }),
+            AgentStatus::Running,
+        ),
+        (
+            serde_json::json!({
+                "agent_source": "codex",
+                "session_id": session_id,
+                "cwd": "/home/user/cx-proj",
+                "hook_event_name": "PermissionRequest",
+                "tool_name": "Bash",
+                "tool_input": {"command": "rm file"},
+                "turn_id": "turn-1",
+                "transcript_path": null,
+                "model": "gpt-5",
+                "permission_mode": "default"
+            }),
+            AgentStatus::WaitingPermission,
+        ),
+        (
+            serde_json::json!({
+                "agent_source": "codex",
+                "session_id": session_id,
+                "cwd": "/home/user/cx-proj",
+                "hook_event_name": "UserPromptSubmit",
+                "prompt": "please continue",
+                "turn_id": "turn-2",
+                "transcript_path": null,
+                "model": "gpt-5",
+                "permission_mode": "default"
+            }),
+            AgentStatus::Running,
+        ),
+        (
+            serde_json::json!({
+                "agent_source": "codex",
+                "session_id": session_id,
+                "cwd": "/home/user/cx-proj",
+                "hook_event_name": "Stop",
+                "last_assistant_message": "All done!",
+                "stop_hook_active": false,
+                "turn_id": "turn-2",
+                "transcript_path": null,
+                "model": "gpt-5",
+                "permission_mode": "default"
+            }),
+            AgentStatus::Completed,
+        ),
     ];
 
     for (i, (raw, expected_status)) in events.iter().enumerate() {

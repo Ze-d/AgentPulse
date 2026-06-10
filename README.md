@@ -81,13 +81,13 @@ AgentPulse 运行后，需要让 Claude Code 知道把事件发给它：
 
 ```powershell
 # 预览操作（不会修改任何文件）
-python adapters/claude-code/install_hooks.py --dry-run
+agentpulse-hook dry-run
 
 # 安装 hooks 到 ~/.claude/settings.json
-python adapters/claude-code/install_hooks.py
+agentpulse-hook install
 
 # 检查安装状态
-python adapters/claude-code/install_hooks.py --status
+agentpulse-hook status
 ```
 
 这会向 `~/.claude/settings.json` 写入 6 个 hook 事件：SessionStart、PreToolUse、PostToolUse、PostToolUseFailure、Notification、Stop。安装前会自动备份原文件。
@@ -108,7 +108,7 @@ AgentPulse 启动时会自动检测并安装 hooks（幂等操作），无需手
 ### 4. 卸载 hooks
 
 ```powershell
-python adapters/claude-code/install_hooks.py --remove
+agentpulse-hook remove
 ```
 
 ## 配置
@@ -138,7 +138,7 @@ python adapters/claude-code/install_hooks.py --remove
 ```
 Claude Code session 事件
   → ~/.claude/settings.json (hooks 配置)
-    → monitor_hook.py (stdin 适配器, 进程树遍历获取 CC PID)
+    → agentpulse-hook (Rust 二进制, 进程树遍历获取 agent PID)
       → POST /api/events (127.0.0.1:{port})
         → event_server.rs (规范化 + 状态机)
           → SQLite (持久化)
@@ -187,8 +187,7 @@ AgentPulse/
 │   │   └── tests/                 # Rust 集成测试
 │   └── tauri.conf.json
 ├── adapters/claude-code/          # Claude Code hook 适配器
-│   ├── install_hooks.py           # 一键安装/卸载/状态/预览
-│   └── monitor_hook.py            # stdin → HTTP 转发, 带重试 + PID 探测
+│   └── agentpulse-hook            # 零依赖 hook 适配器 (stdin → HTTP + CLI 安装管理)
 ├── tests/
 │   ├── unit/                      # Python 单元测试 (32 个)
 │   └── integration/               # E2E 冒烟测试

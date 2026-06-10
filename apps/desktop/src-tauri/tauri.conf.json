@@ -36,7 +36,7 @@
     "active": true,
     "targets": "all",
     "resources": {
-      "../../../adapters/claude-code/monitor_hook.py": "monitor_hook.py"
+      "../../../adapters/hook-adapter/target/release/agentpulse-hook.exe": "agentpulse-hook.exe"
     },
     "icon": [
       "icons/32x32.png",

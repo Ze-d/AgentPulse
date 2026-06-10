@@ -11,7 +11,6 @@
 //! |-------------------------------|---------------------|
 //! | `AGENTPULSE_PORT`             | `port`              |
 //! | `AGENTPULSE_CHECK_INTERVAL`   | `check_interval_secs` |
-//! | `AGENTPULSE_PYTHON`           | `python`            |
 //! | `AGENTPULSE_POLL_INTERVAL`    | `poll_interval_ms`  |
 
 use serde::{Deserialize, Serialize};
@@ -46,11 +45,6 @@ pub struct AgentPulseConfig {
     #[serde(default = "default_check_interval_secs")]
     pub check_interval_secs: u64,
 
-    /// Python interpreter override. `null` / absent means auto-detect
-    /// (probe `python3`, fall back to `python`).
-    #[serde(default)]
-    pub python: Option<String>,
-
     /// Frontend polling interval in milliseconds.
     #[serde(default = "default_poll_interval_ms")]
     pub poll_interval_ms: u64,
@@ -61,7 +55,6 @@ impl Default for AgentPulseConfig {
         Self {
             port: default_port(),
             check_interval_secs: default_check_interval_secs(),
-            python: None,
             poll_interval_ms: default_poll_interval_ms(),
         }
     }
@@ -125,10 +118,6 @@ impl AgentPulseConfig {
                 self.check_interval_secs = s;
             }
         }
-        if let Ok(v) = std::env::var("AGENTPULSE_PYTHON") {
-            tracing::debug!(python = %v, "AGENTPULSE_PYTHON override");
-            self.python = Some(v);
-        }
         if let Ok(v) = std::env::var("AGENTPULSE_POLL_INTERVAL") {
             if let Ok(ms) = v.parse() {
                 tracing::debug!(ms = ms, "AGENTPULSE_POLL_INTERVAL override");
@@ -151,7 +140,7 @@ mod tests {
         let config = AgentPulseConfig::default();
         assert_eq!(config.port, 17878);
         assert_eq!(config.check_interval_secs, 5);
-        assert!(config.python.is_none());
+        assert_eq!(config.poll_interval_ms, 2000); // (was python.is_none())
         assert_eq!(config.poll_interval_ms, 2000);
     }
 
@@ -164,7 +153,6 @@ mod tests {
         let loaded = AgentPulseConfig::load(dir.path());
         assert_eq!(loaded.port, config.port);
         assert_eq!(loaded.check_interval_secs, config.check_interval_secs);
-        assert_eq!(loaded.python, config.python);
         assert_eq!(loaded.poll_interval_ms, config.poll_interval_ms);
     }
 
@@ -197,7 +185,6 @@ mod tests {
         let config = AgentPulseConfig {
             port: 9999,
             check_interval_secs: 10,
-            python: Some("/usr/bin/python3".into()),
             poll_interval_ms: 5000,
         };
         config.save(dir.path()).unwrap();
@@ -205,7 +192,6 @@ mod tests {
         let loaded = AgentPulseConfig::load(dir.path());
         assert_eq!(loaded.port, 9999);
         assert_eq!(loaded.check_interval_secs, 10);
-        assert_eq!(loaded.python.as_deref(), Some("/usr/bin/python3"));
         assert_eq!(loaded.poll_interval_ms, 5000);
     }
 }

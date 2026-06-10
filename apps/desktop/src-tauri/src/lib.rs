@@ -132,7 +132,6 @@ pub fn run() {
         port = config.port,
         check_interval_secs = config.check_interval_secs,
         poll_interval_ms = config.poll_interval_ms,
-        python = config.python,
         "configuration loaded"
     );
 
@@ -153,7 +152,6 @@ pub fn run() {
         "process checker thread spawned"
     );
 
-    let python_for_hooks = hooks::resolve_python(config.python.as_deref());
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_shell::init())
@@ -257,7 +255,6 @@ pub fn run() {
 
             // Ensure hooks are installed on every launch (idempotent).
             let app_handle = app.handle().clone();
-            let python = python_for_hooks.clone();
             std::thread::spawn(move || {
                 let resource_dir = match app_handle.path().resource_dir() {
                     Ok(d) => d,
@@ -284,24 +281,22 @@ pub fn run() {
                     }
                 };
 
-                match hooks::extract_monitor_script(&resource_dir, &app_data_dir) {
-                    Ok(monitor_path) => {
+                match hooks::extract_hook_binary(&resource_dir, &app_data_dir) {
+                    Ok(hook_path) => {
                         match hooks::ensure_hooks_installed(
                             &settings_path,
-                            &monitor_path.to_string_lossy(),
-                            &python,
+                            &hook_path.to_string_lossy(),
                         ) {
                             Ok(status) => tracing::info!(status = %status, "AgentPulse hooks"),
                             Err(e) => tracing::error!(error = %e, "failed to ensure hooks installed"),
                         }
                     }
-                    Err(e) => tracing::error!(error = %e, "failed to extract monitor script"),
+                    Err(e) => tracing::error!(error = %e, "failed to extract hook binary"),
                 }
             });
 
             // Ensure Codex hooks are installed on every launch (idempotent).
             let app_handle2 = app.handle().clone();
-            let python2 = python_for_hooks;
             std::thread::spawn(move || {
                 let resource_dir = match app_handle2.path().resource_dir() {
                     Ok(d) => d,
@@ -328,18 +323,17 @@ pub fn run() {
                     }
                 };
 
-                match hooks::extract_monitor_script(&resource_dir, &app_data_dir) {
-                    Ok(monitor_path) => {
+                match hooks::extract_hook_binary(&resource_dir, &app_data_dir) {
+                    Ok(hook_path) => {
                         match hooks::ensure_codex_hooks_installed(
                             &codex_config_path,
-                            &monitor_path.to_string_lossy(),
-                            &python2,
+                            &hook_path.to_string_lossy(),
                         ) {
                             Ok(status) => tracing::info!(status = %status, "Codex AgentPulse hooks"),
                             Err(e) => tracing::error!(error = %e, "failed to ensure codex hooks installed"),
                         }
                     }
-                    Err(e) => tracing::error!(error = %e, "failed to extract monitor script for codex"),
+                    Err(e) => tracing::error!(error = %e, "failed to extract hook binary for codex"),
                 }
             });
 
