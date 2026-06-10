@@ -760,6 +760,7 @@ dependencies = [
  "tauri-plugin-shell",
  "tempfile",
  "tiny_http",
+ "toml 0.8.2",
  "tracing",
  "tracing-appender",
  "tracing-log",
