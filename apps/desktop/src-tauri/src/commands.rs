@@ -71,9 +71,7 @@ pub fn get_hook_status_cmd(app_handle: tauri::AppHandle) -> Result<HashMap<Strin
 }
 
 #[tauri::command]
-pub fn install_hooks_cmd(
-    app_handle: tauri::AppHandle,
-) -> Result<String, String> {
+pub fn install_hooks_cmd(app_handle: tauri::AppHandle) -> Result<String, String> {
     tracing::info!("user triggered hook installation");
     let settings_path = app_handle
         .path()
@@ -102,7 +100,9 @@ pub fn uninstall_hooks_cmd(app_handle: tauri::AppHandle) -> Result<String, Strin
 }
 
 #[tauri::command]
-pub fn get_codex_hook_status_cmd(app_handle: tauri::AppHandle) -> Result<HashMap<String, bool>, String> {
+pub fn get_codex_hook_status_cmd(
+    app_handle: tauri::AppHandle,
+) -> Result<HashMap<String, bool>, String> {
     tracing::debug!("get_codex_hook_status_cmd");
     let config_path = app_handle
         .path()
@@ -112,9 +112,7 @@ pub fn get_codex_hook_status_cmd(app_handle: tauri::AppHandle) -> Result<HashMap
 }
 
 #[tauri::command]
-pub fn install_codex_hooks_cmd(
-    app_handle: tauri::AppHandle,
-) -> Result<String, String> {
+pub fn install_codex_hooks_cmd(app_handle: tauri::AppHandle) -> Result<String, String> {
     tracing::info!("user triggered codex hook installation");
     let config_path = app_handle
         .path()

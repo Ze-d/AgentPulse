@@ -7,8 +7,12 @@ use sysinfo::{Pid, System};
 
 #[cfg(target_os = "windows")]
 const SHELL_NAMES: &[&str] = &[
-    "cmd.exe", "powershell.exe", "pwsh.exe",
-    "sh.exe", "bash.exe", "conhost.exe",
+    "cmd.exe",
+    "powershell.exe",
+    "pwsh.exe",
+    "sh.exe",
+    "bash.exe",
+    "conhost.exe",
 ];
 
 #[cfg(not(target_os = "windows"))]

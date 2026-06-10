@@ -57,11 +57,9 @@ enum Commands {
 }
 
 fn main() {
-    env_logger::Builder::from_env(
-        env_logger::Env::default().default_filter_or(
-            std::env::var("AGENTPULSE_LOG_LEVEL").unwrap_or_else(|_| "info".to_string()),
-        ),
-    )
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or(
+        std::env::var("AGENTPULSE_LOG_LEVEL").unwrap_or_else(|_| "info".to_string()),
+    ))
     .format_timestamp_millis()
     .init();
 

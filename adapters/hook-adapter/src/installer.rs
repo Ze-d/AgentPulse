@@ -202,10 +202,7 @@ fn parse_toml_sections(raw: &str) -> BTreeMap<String, Vec<String>> {
 
     for line in raw.lines() {
         let trimmed = line.trim();
-        if trimmed.starts_with('[')
-            && trimmed.ends_with(']')
-            && !trimmed.starts_with("[[")
-        {
+        if trimmed.starts_with('[') && trimmed.ends_with(']') && !trimmed.starts_with("[[") {
             current = trimmed[1..trimmed.len() - 1].to_string();
             sections.entry(current.clone()).or_default();
         } else {

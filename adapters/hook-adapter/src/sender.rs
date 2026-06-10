@@ -39,14 +39,13 @@ pub fn send_event(data: &serde_json::Value) -> i32 {
                 if attempt < MAX_RETRIES {
                     log::warn!(
                         "Connection failed (attempt {}/{}): {}",
-                        attempt, MAX_RETRIES, e
+                        attempt,
+                        MAX_RETRIES,
+                        e
                     );
                     std::thread::sleep(std::time::Duration::from_millis(RETRY_DELAY_MS));
                 } else {
-                    log::error!(
-                        "Failed to send event after {} attempts: {}",
-                        MAX_RETRIES, e
-                    );
+                    log::error!("Failed to send event after {} attempts: {}", MAX_RETRIES, e);
                     return -1;
                 }
             }

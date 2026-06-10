@@ -54,12 +54,16 @@ pub fn find_hook_binary(resource_dir: &Path) -> Result<PathBuf, String> {
     }
 
     // Dev fallback: look in hook-adapter target directory.
-    let profile = if cfg!(debug_assertions) { "debug" } else { "release" };
+    let profile = if cfg!(debug_assertions) {
+        "debug"
+    } else {
+        "release"
+    };
     let dev_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("..")   // src-tauri/
-        .join("..")   // desktop/
-        .join("..")   // apps/
-        .join("..")   // repo root
+        .join("..") // src-tauri/
+        .join("..") // desktop/
+        .join("..") // apps/
+        .join("..") // repo root
         .join("adapters")
         .join("hook-adapter")
         .join("target")
@@ -195,10 +199,7 @@ fn backup_settings(path: &Path) {
 /// - `"already_ok"` — hooks are correct, nothing changed
 /// - `"installed"` — hooks were missing and have been added
 /// - `"updated"` — hooks existed but pointed to a stale path, now fixed
-pub fn ensure_hooks_installed(
-    settings_path: &Path,
-    hook_binary: &str,
-) -> Result<String, String> {
+pub fn ensure_hooks_installed(settings_path: &Path, hook_binary: &str) -> Result<String, String> {
     let settings = load_settings(settings_path);
     let existing_hooks = settings.get("hooks").cloned().unwrap_or(json!({}));
     let our_config = build_hook_configs(hook_binary);
@@ -408,7 +409,8 @@ fn save_codex_config(path: &Path, hooks: &CodexHooksToml) -> Result<(), String> 
     // Merge: for each of our 6 events, set our entry, but keep others.
     let mut merged_hooks = existing_hooks;
     let hooks_str = toml::to_string(hooks).map_err(|e| format!("serialize hooks: {e}"))?;
-    let our_value: toml::Value = toml::from_str(&hooks_str).map_err(|e| format!("parse hooks: {e}"))?;
+    let our_value: toml::Value =
+        toml::from_str(&hooks_str).map_err(|e| format!("parse hooks: {e}"))?;
     if let toml::Value::Table(our_table) = our_value {
         for (key, value) in our_table {
             let is_empty = matches!(&value, toml::Value::Array(arr) if arr.is_empty());
@@ -432,10 +434,14 @@ fn save_codex_config(path: &Path, hooks: &CodexHooksToml) -> Result<(), String> 
 /// Check if our hook definitions match the existing ones exactly.
 fn hooks_are_equal(existing: &CodexHooksToml, ours: &CodexHooksToml) -> bool {
     get_codex_event_groups(existing, "SessionStart") == get_codex_event_groups(ours, "SessionStart")
-        && get_codex_event_groups(existing, "PreToolUse") == get_codex_event_groups(ours, "PreToolUse")
-        && get_codex_event_groups(existing, "PostToolUse") == get_codex_event_groups(ours, "PostToolUse")
-        && get_codex_event_groups(existing, "PermissionRequest") == get_codex_event_groups(ours, "PermissionRequest")
-        && get_codex_event_groups(existing, "UserPromptSubmit") == get_codex_event_groups(ours, "UserPromptSubmit")
+        && get_codex_event_groups(existing, "PreToolUse")
+            == get_codex_event_groups(ours, "PreToolUse")
+        && get_codex_event_groups(existing, "PostToolUse")
+            == get_codex_event_groups(ours, "PostToolUse")
+        && get_codex_event_groups(existing, "PermissionRequest")
+            == get_codex_event_groups(ours, "PermissionRequest")
+        && get_codex_event_groups(existing, "UserPromptSubmit")
+            == get_codex_event_groups(ours, "UserPromptSubmit")
         && get_codex_event_groups(existing, "Stop") == get_codex_event_groups(ours, "Stop")
 }
 
@@ -461,12 +467,36 @@ fn has_codex_event(hooks: &CodexHooksToml, event: &str) -> bool {
 /// our definitions win; other events are left untouched.
 fn merge_codex_hooks(existing: &CodexHooksToml, ours: &CodexHooksToml) -> CodexHooksToml {
     CodexHooksToml {
-        session_start: if ours.session_start.is_empty() { existing.session_start.clone() } else { ours.session_start.clone() },
-        pre_tool_use: if ours.pre_tool_use.is_empty() { existing.pre_tool_use.clone() } else { ours.pre_tool_use.clone() },
-        post_tool_use: if ours.post_tool_use.is_empty() { existing.post_tool_use.clone() } else { ours.post_tool_use.clone() },
-        permission_request: if ours.permission_request.is_empty() { existing.permission_request.clone() } else { ours.permission_request.clone() },
-        user_prompt_submit: if ours.user_prompt_submit.is_empty() { existing.user_prompt_submit.clone() } else { ours.user_prompt_submit.clone() },
-        stop: if ours.stop.is_empty() { existing.stop.clone() } else { ours.stop.clone() },
+        session_start: if ours.session_start.is_empty() {
+            existing.session_start.clone()
+        } else {
+            ours.session_start.clone()
+        },
+        pre_tool_use: if ours.pre_tool_use.is_empty() {
+            existing.pre_tool_use.clone()
+        } else {
+            ours.pre_tool_use.clone()
+        },
+        post_tool_use: if ours.post_tool_use.is_empty() {
+            existing.post_tool_use.clone()
+        } else {
+            ours.post_tool_use.clone()
+        },
+        permission_request: if ours.permission_request.is_empty() {
+            existing.permission_request.clone()
+        } else {
+            ours.permission_request.clone()
+        },
+        user_prompt_submit: if ours.user_prompt_submit.is_empty() {
+            existing.user_prompt_submit.clone()
+        } else {
+            ours.user_prompt_submit.clone()
+        },
+        stop: if ours.stop.is_empty() {
+            existing.stop.clone()
+        } else {
+            ours.stop.clone()
+        },
     }
 }
 
@@ -490,7 +520,9 @@ pub fn ensure_codex_hooks_installed(
 
     save_codex_config(config_path, &merged)?;
 
-    let had_any = CODEX_HOOK_EVENTS.iter().any(|e| has_codex_event(&existing, e));
+    let had_any = CODEX_HOOK_EVENTS
+        .iter()
+        .any(|e| has_codex_event(&existing, e));
 
     if had_any {
         tracing::info!(path = %config_path.display(), "Codex AgentPulse hooks updated");
@@ -510,8 +542,8 @@ pub fn unregister_codex_hooks(config_path: &Path) -> Result<String, String> {
     // Read and manipulate at the TOML level to cleanly remove our keys.
     let raw = std::fs::read_to_string(config_path)
         .map_err(|e| format!("read {}: {e}", config_path.display()))?;
-    let mut root: toml::Value = toml::from_str(&raw)
-        .map_err(|e| format!("parse {}: {e}", config_path.display()))?;
+    let mut root: toml::Value =
+        toml::from_str(&raw).map_err(|e| format!("parse {}: {e}", config_path.display()))?;
 
     if let toml::Value::Table(ref mut root_table) = root {
         if let Some(toml::Value::Table(ref mut hooks_table)) = root_table.get_mut("hooks") {
@@ -569,7 +601,10 @@ mod tests {
         let config = build_hook_configs("C:\\app\\agentpulse-hook.exe");
         let session_start = &config["SessionStart"][0]["hooks"][0]["command"];
         let cmd = session_start.as_str().unwrap();
-        assert!(cmd.contains("agentpulse-hook"), "expected binary in command");
+        assert!(
+            cmd.contains("agentpulse-hook"),
+            "expected binary in command"
+        );
     }
 
     #[test]
