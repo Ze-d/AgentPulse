@@ -261,3 +261,106 @@ fn test_normalize_dispatches_claude_when_unknown_agent_source() {
     // Unknown sources fall back to ClaudeCode
     assert_eq!(event.source, AgentSource::ClaudeCode);
 }
+
+// ── Full Codex session lifecycle test ──
+
+#[test]
+fn test_codex_full_session_lifecycle_normalizes_all_events() {
+    // Simulate a complete Codex session with all 6 event types
+    let session_id = "cx-lifecycle-001";
+
+    let events = vec![
+        (serde_json::json!({
+            "agent_source": "codex",
+            "session_id": session_id,
+            "cwd": "/home/user/cx-proj",
+            "hook_event_name": "SessionStart",
+            "transcript_path": "/tmp/transcript.json",
+            "model": "gpt-5",
+            "permission_mode": "default",
+            "source": "startup",
+            "turn_id": "turn-1",
+            "process_pid": 9999
+        }), AgentStatus::Starting),
+        (serde_json::json!({
+            "agent_source": "codex",
+            "session_id": session_id,
+            "cwd": "/home/user/cx-proj",
+            "hook_event_name": "PreToolUse",
+            "tool_name": "Write",
+            "tool_input": {"path": "main.rs"},
+            "tool_use_id": "tu-1",
+            "turn_id": "turn-1",
+            "transcript_path": null,
+            "model": "gpt-5",
+            "permission_mode": "default"
+        }), AgentStatus::ToolRunning),
+        (serde_json::json!({
+            "agent_source": "codex",
+            "session_id": session_id,
+            "cwd": "/home/user/cx-proj",
+            "hook_event_name": "PostToolUse",
+            "tool_name": "Write",
+            "tool_input": {"path": "main.rs"},
+            "tool_response": null,
+            "tool_use_id": "tu-1",
+            "turn_id": "turn-1",
+            "transcript_path": null,
+            "model": "gpt-5",
+            "permission_mode": "default"
+        }), AgentStatus::Running),
+        (serde_json::json!({
+            "agent_source": "codex",
+            "session_id": session_id,
+            "cwd": "/home/user/cx-proj",
+            "hook_event_name": "PermissionRequest",
+            "tool_name": "Bash",
+            "tool_input": {"command": "rm file"},
+            "turn_id": "turn-1",
+            "transcript_path": null,
+            "model": "gpt-5",
+            "permission_mode": "default"
+        }), AgentStatus::WaitingPermission),
+        (serde_json::json!({
+            "agent_source": "codex",
+            "session_id": session_id,
+            "cwd": "/home/user/cx-proj",
+            "hook_event_name": "UserPromptSubmit",
+            "prompt": "please continue",
+            "turn_id": "turn-2",
+            "transcript_path": null,
+            "model": "gpt-5",
+            "permission_mode": "default"
+        }), AgentStatus::Running),
+        (serde_json::json!({
+            "agent_source": "codex",
+            "session_id": session_id,
+            "cwd": "/home/user/cx-proj",
+            "hook_event_name": "Stop",
+            "last_assistant_message": "All done!",
+            "stop_hook_active": false,
+            "turn_id": "turn-2",
+            "transcript_path": null,
+            "model": "gpt-5",
+            "permission_mode": "default"
+        }), AgentStatus::Completed),
+    ];
+
+    for (i, (raw, expected_status)) in events.iter().enumerate() {
+        let event = normalize_event_by_source(raw);
+        assert_eq!(
+            event.source,
+            AgentSource::Codex,
+            "event[{i}]: source should be Codex"
+        );
+        assert_eq!(
+            event.session_id, session_id,
+            "event[{i}]: session_id mismatch"
+        );
+        assert_eq!(
+            event.status, *expected_status,
+            "event[{i}]: expected status {expected_status:?}, got {:?}",
+            event.status
+        );
+    }
+}
