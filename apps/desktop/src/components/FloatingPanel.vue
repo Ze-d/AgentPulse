@@ -11,7 +11,7 @@ import { openDirectory, openTranscript } from "../utils/openActions";
 const logger = createLogger("FloatingPanel");
 
 const HEADER_HEIGHT = 28;
-const CARD_HEIGHT = 34;
+const CARD_HEIGHT = 40;  // 36px card min-height + 4px margin-bottom
 const PANEL_PADDING = 20;
 const DEFAULT_POLL_INTERVAL = 2000;
 

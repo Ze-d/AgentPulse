@@ -60,6 +60,14 @@ export const STATUS_LABELS: Record<AgentStatus, string> = {
   unknown: "?",
 };
 
+/** Statuses that allow the user to manually dismiss the session card via swipe. */
+export const DISMISSABLE_STATUSES: AgentStatus[] = [
+  "completed",
+  "starting",
+  "failed",
+  "unknown",
+];
+
 export const STATUS_COLORS: Record<AgentStatus, string> = {
   starting: "#89b4fa",           // Catppuccin Blue
   running: "#94e2d5",            // Catppuccin Teal
