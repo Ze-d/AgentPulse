@@ -5,9 +5,18 @@ on:
     branches: [main, master]
   pull_request:
     branches: [main, master]
+  merge_group:
+    types: [checks_requested]
+  workflow_dispatch:
+
+# Cancel redundant runs for the same PR/branch
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   check:
+    name: Check (${{ matrix.platform }})
     strategy:
       fail-fast: false
       matrix:

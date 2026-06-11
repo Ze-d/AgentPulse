@@ -17,3 +17,7 @@
 {"timestamp":"2026-06-10T03:10:52.211258Z","level":"INFO","fields":{"message":"test message without file logging"},"target":"agentpulse_lib::logging::tests"}
 {"timestamp":"2026-06-10T06:41:56.202225Z","level":"INFO","fields":{"message":"test message without file logging"},"target":"agentpulse_lib::logging::tests"}
 {"timestamp":"2026-06-10T12:15:21.336426Z","level":"INFO","fields":{"message":"test message without file logging"},"target":"agentpulse_lib::logging::tests"}
+{"timestamp":"2026-06-11T03:52:10.856346Z","level":"INFO","fields":{"message":"test message without file logging"},"target":"agentpulse_lib::logging::tests"}
+{"timestamp":"2026-06-11T03:53:39.985528Z","level":"INFO","fields":{"message":"test message without file logging"},"target":"agentpulse_lib::logging::tests"}
+{"timestamp":"2026-06-11T03:54:42.578377Z","level":"INFO","fields":{"message":"test message without file logging"},"target":"agentpulse_lib::logging::tests"}
+{"timestamp":"2026-06-11T03:55:06.487172Z","level":"INFO","fields":{"message":"test message without file logging"},"target":"agentpulse_lib::logging::tests"}
