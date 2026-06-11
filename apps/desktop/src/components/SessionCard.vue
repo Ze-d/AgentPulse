@@ -19,7 +19,9 @@ const sessionRef = toRef(props, "session");
 const { statusColor, statusLabel, duration } = useSessionDisplay(sessionRef);
 const store = useSessionStore();
 
-const canSwipe = DISMISSABLE_STATUSES.includes(props.session.status);
+const canSwipe = computed(() =>
+  DISMISSABLE_STATUSES.includes(props.session.status),
+);
 
 /** Dimissing a "starting" session is a cancel action; other statuses are a dismiss. */
 const swipeActionLabel = computed(() =>
@@ -56,7 +58,7 @@ const {
 const mouseActive = ref(false);
 
 function handleMouseDown(e: MouseEvent) {
-  if (!canSwipe) return;
+  if (!canSwipe.value) return;
   onMouseDown(e);
   mouseActive.value = true;
   document.addEventListener("mousemove", handleMouseMove);
