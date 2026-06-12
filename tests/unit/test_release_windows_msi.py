@@ -23,6 +23,6 @@ def test_release_windows_build_explicitly_requests_msi_bundle():
 def test_release_workflow_fails_when_windows_msi_is_missing():
     content = RELEASE_WORKFLOW.read_text(encoding="utf-8")
 
-    assert "uses: tauri-apps/tauri-action@v1" in content
+    assert "uses: tauri-apps/tauri-action@v2" in content
     assert "name: Verify Windows MSI bundle" in content
     assert "target/*/release/bundle/msi/*.msi" in content
