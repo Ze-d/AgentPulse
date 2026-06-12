@@ -69,12 +69,16 @@ jobs:
         include:
           - platform: 'ubuntu-24.04'
             target: 'x86_64-unknown-linux-gnu'
+            bundles: 'deb,rpm,appimage'
           - platform: 'windows-latest'
             target: 'x86_64-pc-windows-msvc'
+            bundles: 'nsis,msi'
           - platform: 'macos-latest'
             target: 'x86_64-apple-darwin'
+            bundles: 'dmg,app'
           - platform: 'macos-latest'
             target: 'aarch64-apple-darwin'
+            bundles: 'dmg,app'
 
     runs-on: ${{ matrix.platform }}
 
@@ -131,7 +135,8 @@ jobs:
           npm ls lightningcss-darwin-arm64
 
       - name: Build and publish
-        uses: tauri-apps/tauri-action@v0
+        id: build_publish
+        uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -141,4 +146,16 @@ jobs:
           releaseBody: 'See [CHANGELOG](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md) for details.'
           releaseDraft: true
           prerelease: false
-          args: '--target ${{ matrix.target }}'
+          args: '--target ${{ matrix.target }} --bundles ${{ matrix.bundles }}'
+
+      - name: Verify Windows MSI bundle
+        if: runner.os == 'Windows'
+        working-directory: apps/desktop/src-tauri
+        shell: pwsh
+        run: |
+          $msi = Get-ChildItem -Path 'target/*/release/bundle/msi/*.msi' -ErrorAction SilentlyContinue
+          if (-not $msi) {
+            Write-Error 'Windows release build did not produce an MSI bundle. Ensure the Tauri build requests --bundles nsis,msi and the runner has VBScript/WiX support available.'
+            exit 1
+          }
+          $msi | ForEach-Object { Write-Host "Found MSI bundle: $($_.FullName)" }
