@@ -36,7 +36,8 @@
     "active": true,
     "targets": "all",
     "resources": {
-      "../../../adapters/hook-adapter/target/release/agentpulse-hook.exe": "agentpulse-hook.exe"
+      "resources/agentpulse-hook": "agentpulse-hook",
+      "resources/agentpulse-hook.exe": "agentpulse-hook.exe"
     },
     "icon": [
       "icons/32x32.png",

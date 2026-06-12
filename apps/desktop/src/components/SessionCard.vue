@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { toRef, ref, onUnmounted } from "vue";
+import { toRef, ref, onUnmounted, computed } from "vue";
 import type { AgentSession } from "../types/agent";
+import { DISMISSABLE_STATUSES } from "../types/agent";
 import { sourceAbbr } from "../utils/sourceDisplay";
 import { useSessionDisplay } from "../composables/useSessionDisplay";
 import { useSwipeDismiss } from "../composables/useSwipeDismiss";
@@ -18,7 +19,25 @@ const sessionRef = toRef(props, "session");
 const { statusColor, statusLabel, duration } = useSessionDisplay(sessionRef);
 const store = useSessionStore();
 
-const canSwipe = props.session.status === "completed";
+const canSwipe = computed(() =>
+  DISMISSABLE_STATUSES.includes(props.session.status),
+);
+
+/** Dimissing a "starting" session is a cancel action; other statuses are a dismiss. */
+const swipeActionLabel = computed(() =>
+  props.session.status === "starting" ? "✕ cancel" : "✕ dismiss",
+);
+
+/** Amber background for cancelling a starting session; red for other dismissals. */
+const swipeBgActiveColor = computed(() =>
+  props.session.status === "starting"
+    ? "rgba(249, 226, 175, 0.25)"  // Catppuccin Yellow
+    : "rgba(243, 139, 168, 0.2)",  // Catppuccin Red
+);
+
+const swipeLabelActiveColor = computed(() =>
+  props.session.status === "starting" ? "#f9e2af" : "var(--color-red)",
+);
 
 const {
   translateX,
@@ -39,7 +58,7 @@ const {
 const mouseActive = ref(false);
 
 function handleMouseDown(e: MouseEvent) {
-  if (!canSwipe) return;
+  if (!canSwipe.value) return;
   onMouseDown(e);
   mouseActive.value = true;
   document.addEventListener("mousemove", handleMouseMove);
@@ -75,13 +94,17 @@ function handleCardClick() {
     :class="{ 'swipeable': canSwipe, 'dismissed': dismissed }"
     :style="{ transform: `translateX(${translateX}px)`, opacity: dismissed ? 0 : 1 }"
   >
-    <!-- Background: dismiss indicator shown behind the card during swipe -->
+    <!-- Background: dismiss/cancel indicator shown behind the card during swipe -->
     <div
       v-if="canSwipe"
       class="swipe-bg"
       :class="{ active: isDismissing }"
+      :style="isDismissing ? { background: swipeBgActiveColor } : {}"
     >
-      <span class="swipe-label">{{ isDismissing ? '✕ dismiss' : '← slide' }}</span>
+      <span
+        class="swipe-label"
+        :style="isDismissing ? { color: swipeLabelActiveColor } : {}"
+      >{{ isDismissing ? swipeActionLabel : '← slide' }}</span>
     </div>
 
     <div
@@ -153,6 +176,10 @@ function handleCardClick() {
   position: relative;
   z-index: 1;
   transition: background 0.15s ease;
+  min-height: 36px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
 }
 
 .session-card:hover {
