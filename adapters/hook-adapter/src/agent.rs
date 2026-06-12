@@ -15,9 +15,7 @@ const SHELL_NAMES: &[&str] = &[
     "conhost.exe",
 ];
 
-#[cfg(not(target_os = "windows"))]
-const SHELL_NAMES: &[&str] = &["sh", "bash", "zsh", "fish", "dash"];
-
+#[cfg(target_os = "windows")]
 const AGENT_BINARIES: &[(&str, &str)] = &[
     ("node.exe", "claude-code"),
     ("codex.exe", "codex"),
@@ -43,7 +41,7 @@ pub fn detect() -> (u32, String) {
                 return (parent.as_u32(), "claude-code".to_string());
             }
         }
-        return (std::process::id(), "claude-code".to_string());
+        (std::process::id(), "claude-code".to_string())
     }
 
     #[cfg(target_os = "windows")]
