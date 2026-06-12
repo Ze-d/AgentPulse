@@ -139,11 +139,9 @@ fn cc_remove(path: &Path) -> String {
 
     let settings = load_json(path);
     if let serde_json::Value::Object(mut map) = settings {
-        if let Some(hooks) = map.get_mut("hooks") {
-            if let serde_json::Value::Object(hooks_map) = hooks {
-                for event in CC_HOOK_EVENTS {
-                    hooks_map.remove(*event);
-                }
+        if let Some(serde_json::Value::Object(hooks_map)) = map.get_mut("hooks") {
+            for event in CC_HOOK_EVENTS {
+                hooks_map.remove(*event);
             }
         }
         let _ = save_json(path, &serde_json::Value::Object(map));
@@ -222,8 +220,8 @@ fn find_event_start(lines: &[String], event: &str) -> Option<usize> {
 }
 
 fn find_event_end(lines: &[String], start: usize) -> usize {
-    for i in (start + 1)..lines.len() {
-        let s = lines[i].trim();
+    for (i, line) in lines.iter().enumerate().skip(start + 1) {
+        let s = line.trim();
         if s.contains('=') && !s.starts_with(&[' ', '\t', '{', ']'][..]) {
             return i;
         }
@@ -324,7 +322,7 @@ fn codex_remove(path: &Path) -> String {
             }
         }
         // Remove trailing blank lines
-        while lines.last().map_or(false, |l| l.trim().is_empty()) {
+        while lines.last().is_some_and(|l| l.trim().is_empty()) {
             lines.pop();
         }
     }
