@@ -11,6 +11,7 @@ pub mod tray;
 use config::AgentPulseConfig;
 use db::Database;
 use serde::{Deserialize, Serialize};
+use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 use tauri::Manager;
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
@@ -140,11 +141,12 @@ pub fn run() {
     let db = Arc::new(Mutex::new(database));
 
     let db_for_server = db.clone();
-    let addr = format!("127.0.0.1:{}", config.port);
-    std::thread::spawn(move || {
-        let _ = event_server::EventServer::start_shared(db_for_server, &addr);
-    });
-    tracing::debug!(port = config.port, "event server thread spawned");
+    let addr: SocketAddr = format!("127.0.0.1:{}", config.port)
+        .parse()
+        .expect("Invalid event server address");
+    let shutdown = event_server::serve(db_for_server, addr)
+        .expect("Failed to start event server");
+    tracing::debug!(port = config.port, "event server spawned (axum)");
 
     process_checker::start(db.clone(), config.check_interval_secs);
     tracing::debug!(
@@ -159,6 +161,7 @@ pub fn run() {
         .manage(commands::AppState {
             db: db.clone(),
             config: config.clone(),
+            shutdown: shutdown.clone(),
         })
         .invoke_handler(tauri::generate_handler![
             commands::get_sessions,
@@ -202,6 +205,9 @@ pub fn run() {
                             }
                         }
                         Some("quit") => {
+                            if let Some(state) = app_handle.try_state::<commands::AppState>() {
+                                state.shutdown.store(true, std::sync::atomic::Ordering::Relaxed);
+                            }
                             app_handle.exit(0);
                         }
                         _ => {
@@ -246,6 +252,9 @@ pub fn run() {
                                     }
                                 }
 
+                                if let Some(state) = app_handle.try_state::<commands::AppState>() {
+                                    state.shutdown.store(true, std::sync::atomic::Ordering::Relaxed);
+                                }
                                 app_handle.exit(0);
                             }
                         }

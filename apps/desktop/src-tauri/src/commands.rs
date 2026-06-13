@@ -4,6 +4,7 @@ use crate::hooks;
 use crate::AgentSession;
 use serde::Serialize;
 use std::collections::HashMap;
+use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex};
 use tauri::Manager;
 use tauri::State;
@@ -11,6 +12,10 @@ use tauri::State;
 pub struct AppState {
     pub db: Arc<Mutex<Database>>,
     pub config: AgentPulseConfig,
+    /// Shutdown signal for the event server thread — set to `true` when the
+    /// app is quitting so the server can stop accepting new requests and exit
+    /// its accept loop cleanly.
+    pub shutdown: Arc<AtomicBool>,
 }
 
 /// Subset of config exposed to the frontend.

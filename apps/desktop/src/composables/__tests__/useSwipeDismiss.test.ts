@@ -2,10 +2,10 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { useSwipeDismiss } from "../useSwipeDismiss";
 
 describe("useSwipeDismiss", () => {
-  let onDismiss: ReturnType<typeof vi.fn>;
+  let onDismiss: () => void;
 
   beforeEach(() => {
-    onDismiss = vi.fn();
+    onDismiss = vi.fn<() => void>();
   });
 
   // -- initial state --------------------------------------------------------
@@ -129,7 +129,7 @@ describe("useSwipeDismiss", () => {
   // -- mouse tracking -------------------------------------------------------
 
   it("onMouseDown starts swipe tracking", () => {
-    const { onMouseDown, swiping, startSwipe } = useSwipeDismiss(onDismiss);
+    const { onMouseDown, swiping } = useSwipeDismiss(onDismiss);
 
     // Simulate a mouse down event
     const mouseEvent = new MouseEvent("mousedown", {
