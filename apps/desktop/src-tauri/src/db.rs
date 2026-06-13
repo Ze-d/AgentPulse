@@ -312,6 +312,28 @@ impl Database {
         Ok(())
     }
 
+    /// Mark a session as Failed and set `needs_attention` so the frontend
+    /// highlights the card.  Used by the process checker when it detects that
+    /// the agent process has died, so the session stays visible and the user
+    /// can dismiss it instead of the session silently disappearing.
+    pub fn mark_session_failed(&self, session_id: &str, now_ms: i64) -> Result<()> {
+        tracing::info!(session_id = %session_id, "mark_session_failed");
+        self.conn.execute(
+            "UPDATE sessions
+             SET status = ?1,
+                 completed_at = ?2,
+                 updated_at = ?2,
+                 needs_attention = 1
+             WHERE session_id = ?3",
+            params![
+                Self::serialize_agent_status(&AgentStatus::Failed),
+                now_ms,
+                session_id,
+            ],
+        )?;
+        Ok(())
+    }
+
     pub fn list_sessions_with_pid(&self) -> Result<Vec<AgentSession>> {
         let mut stmt = self.conn.prepare(
             "SELECT session_id, source, cwd, project_name, status, started_at,
