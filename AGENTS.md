@@ -38,7 +38,6 @@
 |------|------|------|
 | TypeScript 类型检查 | `vue-tsc --noEmit` | 确保类型正确 |
 | 前端测试 | `npm test` (Vitest) | 运行前端单元测试 |
-| Python 测试 | `pytest tests/` | 运行 Python 单元测试 |
 | Rust 格式检查 | `cargo fmt --check` | 确保代码格式一致 |
 | Rust Lint | `cargo clippy -- -D warnings` | 零警告 |
 | Rust 测试 | `cargo test` | 运行 Rust 单元测试 |
@@ -92,25 +91,22 @@ gh pr merge --squash --delete-branch
 ## Test Commands
 
 ```powershell
-# Python unit tests
-python -m pytest tests/unit/ -v
-
-# Python E2E test (requires AgentPulse running)
-python tests/integration/test_e2e.py
-
 # Rust tests
 cd apps/desktop/src-tauri && cargo test
 
 # TypeScript type check
 cd apps/desktop && npx vue-tsc --noEmit
+
+# Frontend unit tests
+cd apps/desktop && npm test
 ```
 
 ## Key Files
 
 | File | Purpose |
 |------|---------|
-| `adapters/claude-code/install_hooks.py` | Hook install/uninstall/status CLI |
-| `adapters/claude-code/monitor_hook.py` | Hook event stdin→HTTP adapter |
+| `adapters/hook-adapter/src/main.rs` | Hook CLI (install/uninstall/status/dry-run) |
+| `adapters/hook-adapter/src/hook.rs` | Hook event stdin→HTTP adapter |
 | `apps/desktop/src-tauri/src/lib.rs` | Shared types + app entry point |
 | `apps/desktop/src-tauri/src/db.rs` | SQLite database |
 | `apps/desktop/src-tauri/src/event_server.rs` | HTTP event server :17878 |

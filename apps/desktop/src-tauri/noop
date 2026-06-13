@@ -1,0 +1,8 @@
+{"timestamp":"2026-06-13T02:53:50.124839Z","level":"INFO","fields":{"message":"AgentPulse hooks installed","path":"C:\\Users\\pw\\AppData\\Local\\Temp\\.tmpjSf8KP\\settings.json"},"target":"agentpulse_lib::hooks"}
+{"timestamp":"2026-06-13T02:53:50.124839Z","level":"INFO","fields":{"message":"AgentPulse hooks updated (path changed)","path":"C:\\Users\\pw\\AppData\\Local\\Temp\\.tmpEauWLs\\settings.json"},"target":"agentpulse_lib::hooks"}
+{"timestamp":"2026-06-13T02:53:50.124841Z","level":"INFO","fields":{"message":"test message without file logging"},"target":"agentpulse_lib::logging::tests"}
+{"timestamp":"2026-06-13T05:41:10.322743Z","level":"INFO","fields":{"message":"test message without file logging"},"target":"agentpulse_lib::logging::tests"}
+{"timestamp":"2026-06-13T05:53:28.404056Z","level":"INFO","fields":{"message":"test message without file logging"},"target":"agentpulse_lib::logging::tests"}
+{"timestamp":"2026-06-13T05:57:40.646747Z","level":"INFO","fields":{"message":"test message without file logging"},"target":"agentpulse_lib::logging::tests"}
+{"timestamp":"2026-06-13T06:02:51.343617Z","level":"INFO","fields":{"message":"test message without file logging"},"target":"agentpulse_lib::logging::tests"}
+{"timestamp":"2026-06-13T06:11:43.891833Z","level":"INFO","fields":{"message":"test message without file logging"},"target":"agentpulse_lib::logging::tests"}

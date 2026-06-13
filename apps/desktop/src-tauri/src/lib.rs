@@ -11,6 +11,7 @@ pub mod tray;
 use config::AgentPulseConfig;
 use db::Database;
 use serde::{Deserialize, Serialize};
+use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 use tauri::Manager;
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
@@ -119,6 +120,51 @@ fn write_close_preference(path: &std::path::Path, action: &str) {
     }
 }
 
+/// Extract the hook binary and install hooks for a single agent type.
+///
+/// Shared by both Claude Code (JSON settings) and Codex (TOML config) hook
+/// installation — the logic is identical except for the config path and the
+/// install function.
+fn auto_install_hooks(
+    app_handle: &tauri::AppHandle,
+    config_relative_path: &str,
+    label: &str,
+    install_fn: fn(&std::path::Path, &str) -> Result<String, String>,
+) {
+    let resource_dir = match app_handle.path().resource_dir() {
+        Ok(d) => d,
+        Err(e) => {
+            tracing::error!(error = %e, label, "failed to get resource_dir");
+            return;
+        }
+    };
+    let app_data_dir = match app_handle.path().app_data_dir() {
+        Ok(d) => d,
+        Err(e) => {
+            tracing::error!(error = %e, label, "failed to get app_data_dir");
+            return;
+        }
+    };
+    let config_path = match app_handle
+        .path()
+        .resolve(config_relative_path, tauri::path::BaseDirectory::Home)
+    {
+        Ok(p) => p,
+        Err(e) => {
+            tracing::error!(error = %e, label, "failed to resolve config path");
+            return;
+        }
+    };
+
+    match hooks::extract_hook_binary(&resource_dir, &app_data_dir) {
+        Ok(hook_path) => match install_fn(&config_path, &hook_path.to_string_lossy()) {
+            Ok(status) => tracing::info!(status = %status, "{label} hooks"),
+            Err(e) => tracing::error!(error = %e, label, "failed to ensure hooks"),
+        },
+        Err(e) => tracing::error!(error = %e, label, "failed to extract hook binary"),
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let app_data_dir = logging::default_app_data_dir();
@@ -140,11 +186,11 @@ pub fn run() {
     let db = Arc::new(Mutex::new(database));
 
     let db_for_server = db.clone();
-    let addr = format!("127.0.0.1:{}", config.port);
-    std::thread::spawn(move || {
-        let _ = event_server::EventServer::start_shared(db_for_server, &addr);
-    });
-    tracing::debug!(port = config.port, "event server thread spawned");
+    let addr: SocketAddr = format!("127.0.0.1:{}", config.port)
+        .parse()
+        .expect("Invalid event server address");
+    let shutdown = event_server::serve(db_for_server, addr).expect("Failed to start event server");
+    tracing::debug!(port = config.port, "event server spawned (axum)");
 
     process_checker::start(db.clone(), config.check_interval_secs);
     tracing::debug!(
@@ -159,6 +205,7 @@ pub fn run() {
         .manage(commands::AppState {
             db: db.clone(),
             config: config.clone(),
+            shutdown: shutdown.clone(),
         })
         .invoke_handler(tauri::generate_handler![
             commands::get_sessions,
@@ -202,6 +249,9 @@ pub fn run() {
                             }
                         }
                         Some("quit") => {
+                            if let Some(state) = app_handle.try_state::<commands::AppState>() {
+                                state.shutdown.store(true, std::sync::atomic::Ordering::Relaxed);
+                            }
                             app_handle.exit(0);
                         }
                         _ => {
@@ -246,6 +296,9 @@ pub fn run() {
                                     }
                                 }
 
+                                if let Some(state) = app_handle.try_state::<commands::AppState>() {
+                                    state.shutdown.store(true, std::sync::atomic::Ordering::Relaxed);
+                                }
                                 app_handle.exit(0);
                             }
                         }
@@ -254,87 +307,21 @@ pub fn run() {
             });
 
             // Ensure hooks are installed on every launch (idempotent).
+            // Runs in a background thread to avoid blocking startup.
             let app_handle = app.handle().clone();
             std::thread::spawn(move || {
-                let resource_dir = match app_handle.path().resource_dir() {
-                    Ok(d) => d,
-                    Err(e) => {
-                        tracing::error!(error = %e, "failed to get resource_dir for hook extraction");
-                        return;
-                    }
-                };
-                let app_data_dir = match app_handle.path().app_data_dir() {
-                    Ok(d) => d,
-                    Err(e) => {
-                        tracing::error!(error = %e, "failed to get app_data_dir for hook extraction");
-                        return;
-                    }
-                };
-                let settings_path = match app_handle
-                    .path()
-                    .resolve(".claude/settings.json", tauri::path::BaseDirectory::Home)
-                {
-                    Ok(p) => p,
-                    Err(e) => {
-                        tracing::error!(error = %e, "failed to resolve settings path");
-                        return;
-                    }
-                };
-
-                match hooks::extract_hook_binary(&resource_dir, &app_data_dir) {
-                    Ok(hook_path) => {
-                        match hooks::ensure_hooks_installed(
-                            &settings_path,
-                            &hook_path.to_string_lossy(),
-                        ) {
-                            Ok(status) => tracing::info!(status = %status, "AgentPulse hooks"),
-                            Err(e) => tracing::error!(error = %e, "failed to ensure hooks installed"),
-                        }
-                    }
-                    Err(e) => tracing::error!(error = %e, "failed to extract hook binary"),
-                }
-            });
-
-            // Ensure Codex hooks are installed on every launch (idempotent).
-            let app_handle2 = app.handle().clone();
-            std::thread::spawn(move || {
-                let resource_dir = match app_handle2.path().resource_dir() {
-                    Ok(d) => d,
-                    Err(e) => {
-                        tracing::error!(error = %e, "failed to get resource_dir for codex hook extraction");
-                        return;
-                    }
-                };
-                let app_data_dir = match app_handle2.path().app_data_dir() {
-                    Ok(d) => d,
-                    Err(e) => {
-                        tracing::error!(error = %e, "failed to get app_data_dir for codex hook extraction");
-                        return;
-                    }
-                };
-                let codex_config_path = match app_handle2
-                    .path()
-                    .resolve(".codex/config.toml", tauri::path::BaseDirectory::Home)
-                {
-                    Ok(p) => p,
-                    Err(e) => {
-                        tracing::error!(error = %e, "failed to resolve codex config path");
-                        return;
-                    }
-                };
-
-                match hooks::extract_hook_binary(&resource_dir, &app_data_dir) {
-                    Ok(hook_path) => {
-                        match hooks::ensure_codex_hooks_installed(
-                            &codex_config_path,
-                            &hook_path.to_string_lossy(),
-                        ) {
-                            Ok(status) => tracing::info!(status = %status, "Codex AgentPulse hooks"),
-                            Err(e) => tracing::error!(error = %e, "failed to ensure codex hooks installed"),
-                        }
-                    }
-                    Err(e) => tracing::error!(error = %e, "failed to extract hook binary for codex"),
-                }
+                auto_install_hooks(
+                    &app_handle,
+                    ".claude/settings.json",
+                    "AgentPulse",
+                    hooks::ensure_hooks_installed,
+                );
+                auto_install_hooks(
+                    &app_handle,
+                    ".codex/config.toml",
+                    "Codex AgentPulse",
+                    hooks::ensure_codex_hooks_installed,
+                );
             });
 
             Ok(())

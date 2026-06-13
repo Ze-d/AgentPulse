@@ -1,3 +1,5 @@
+use std::sync::atomic::Ordering;
+
 use tauri::{
     image::Image,
     menu::{Menu, MenuItem},
@@ -31,6 +33,9 @@ pub fn setup_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
             }
             "quit" => {
                 tracing::info!("user quit via tray menu");
+                if let Some(state) = app.try_state::<crate::commands::AppState>() {
+                    state.shutdown.store(true, Ordering::Relaxed);
+                }
                 app.exit(0);
             }
             _ => {}

@@ -11,7 +11,7 @@ use crate::AgentStatus;
 /// Terminal states (Completed, Failed) and Unknown sessions should not be
 /// cleaned up by the process checker — they are handled by the retention
 /// cleanup instead.
-fn is_active_status(status: &AgentStatus) -> bool {
+pub fn is_active_status(status: &AgentStatus) -> bool {
     !matches!(
         status,
         AgentStatus::Completed | AgentStatus::Failed | AgentStatus::Unknown
