@@ -188,10 +188,7 @@ impl EventServer {
 
     /// Normalize the raw JSON event, apply the state-machine transition,
     /// upsert the session, insert the event, and return both.
-    pub fn handle_event(
-        &self,
-        raw: &Value,
-    ) -> Result<(AgentEvent, AgentSession), String> {
+    pub fn handle_event(&self, raw: &Value) -> Result<(AgentEvent, AgentSession), String> {
         let event = normalize_event_by_source(raw);
 
         let db = self.db.lock().map_err(|e| format!("lock error: {}", e))?;
@@ -295,9 +292,7 @@ async fn handle_post_events(
     }
 }
 
-async fn handle_get_sessions(
-    State(db): State<DbState>,
-) -> (StatusCode, Json<Value>) {
+async fn handle_get_sessions(State(db): State<DbState>) -> (StatusCode, Json<Value>) {
     match db.lock() {
         Ok(d) => match d.list_all_sessions() {
             Ok(sessions) => {
@@ -344,10 +339,7 @@ fn build_router(state: DbState) -> Router {
 /// gracefully stop the server.
 ///
 /// Replaces the previous `EventServer::start_shared` (tiny_http-based).
-pub fn serve(
-    db: Arc<Mutex<Database>>,
-    addr: SocketAddr,
-) -> Result<Arc<AtomicBool>, String> {
+pub fn serve(db: Arc<Mutex<Database>>, addr: SocketAddr) -> Result<Arc<AtomicBool>, String> {
     let shutdown = Arc::new(AtomicBool::new(false));
     let shutdown_for_signal = shutdown.clone();
 

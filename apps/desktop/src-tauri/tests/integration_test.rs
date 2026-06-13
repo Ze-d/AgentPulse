@@ -106,7 +106,10 @@ fn get_session(db: &Arc<Mutex<Database>>, session_id: &str) -> agentpulse_lib::A
 }
 
 fn get_events(db: &Arc<Mutex<Database>>, session_id: &str) -> Vec<agentpulse_lib::AgentEvent> {
-    db.lock().unwrap().get_events_for_session(session_id).unwrap()
+    db.lock()
+        .unwrap()
+        .get_events_for_session(session_id)
+        .unwrap()
 }
 
 // ---------------------------------------------------------------------------
@@ -240,13 +243,9 @@ fn test_all_events_stored_for_full_lifecycle() {
         .unwrap();
     // Sleep 1ms between each event to ensure distinct timestamps.
     thread::sleep(Duration::from_millis(1));
-    server
-        .handle_event(&cc_pre_tool_use(sid, "Read"))
-        .unwrap();
+    server.handle_event(&cc_pre_tool_use(sid, "Read")).unwrap();
     thread::sleep(Duration::from_millis(1));
-    server
-        .handle_event(&cc_post_tool_use(sid, "Read"))
-        .unwrap();
+    server.handle_event(&cc_post_tool_use(sid, "Read")).unwrap();
     thread::sleep(Duration::from_millis(1));
     server.handle_event(&cc_stop(sid)).unwrap();
 
@@ -254,8 +253,10 @@ fn test_all_events_stored_for_full_lifecycle() {
     assert_eq!(events.len(), 4, "should have 4 events");
 
     // With distinct timestamps, events should be newest-first.
-    let event_types: Vec<String> =
-        events.iter().map(|e| format!("{:?}", e.event_type)).collect();
+    let event_types: Vec<String> = events
+        .iter()
+        .map(|e| format!("{:?}", e.event_type))
+        .collect();
     assert!(
         event_types[0].contains("Stop"),
         "newest should be Stop, got: {:?}",
@@ -286,7 +287,11 @@ fn test_process_pid_persists_across_events() {
         "tool_name": "Grep"
     });
     let (_event, session) = server.handle_event(&payload_without_pid).unwrap();
-    assert_eq!(session.pid, Some(pid), "PID should persist from SessionStart");
+    assert_eq!(
+        session.pid,
+        Some(pid),
+        "PID should persist from SessionStart"
+    );
 
     // Stop also without PID.
     let stop_without_pid = json!({
@@ -310,27 +315,21 @@ fn test_needs_attention_correct_for_all_statuses() {
     // From StateMachine::needs_attention:
     //   true:  WaitingInput, WaitingPermission, Completed, Failed
     //   false: Starting, Running, ToolRunning, Unknown
-    assert!(!agentpulse_lib::state_machine::StateMachine::needs_attention(
-        &AgentStatus::Starting
-    ));
-    assert!(!agentpulse_lib::state_machine::StateMachine::needs_attention(
-        &AgentStatus::Running
-    ));
-    assert!(!agentpulse_lib::state_machine::StateMachine::needs_attention(
-        &AgentStatus::ToolRunning
-    ));
-    assert!(agentpulse_lib::state_machine::StateMachine::needs_attention(
-        &AgentStatus::WaitingInput
-    ));
-    assert!(agentpulse_lib::state_machine::StateMachine::needs_attention(
-        &AgentStatus::WaitingPermission
-    ));
-    assert!(agentpulse_lib::state_machine::StateMachine::needs_attention(
-        &AgentStatus::Completed
-    ));
-    assert!(agentpulse_lib::state_machine::StateMachine::needs_attention(
-        &AgentStatus::Failed
-    ));
+    assert!(!agentpulse_lib::state_machine::StateMachine::needs_attention(&AgentStatus::Starting));
+    assert!(!agentpulse_lib::state_machine::StateMachine::needs_attention(&AgentStatus::Running));
+    assert!(
+        !agentpulse_lib::state_machine::StateMachine::needs_attention(&AgentStatus::ToolRunning)
+    );
+    assert!(
+        agentpulse_lib::state_machine::StateMachine::needs_attention(&AgentStatus::WaitingInput)
+    );
+    assert!(
+        agentpulse_lib::state_machine::StateMachine::needs_attention(
+            &AgentStatus::WaitingPermission
+        )
+    );
+    assert!(agentpulse_lib::state_machine::StateMachine::needs_attention(&AgentStatus::Completed));
+    assert!(agentpulse_lib::state_machine::StateMachine::needs_attention(&AgentStatus::Failed));
 }
 
 // ---------------------------------------------------------------------------
@@ -390,9 +389,7 @@ fn test_failed_session_lifecycle() {
     // PostToolUseFailure → Failed (state machine: (_, Failure) → Failed)
     assert_eq!(session.status, AgentStatus::Failed);
     // Failed IS flagged as needs_attention.
-    assert!(agentpulse_lib::state_machine::StateMachine::needs_attention(
-        &AgentStatus::Failed
-    ));
+    assert!(agentpulse_lib::state_machine::StateMachine::needs_attention(&AgentStatus::Failed));
     // But NOT an active status (process checker skips it).
     assert!(!process_checker::is_active_status(&AgentStatus::Failed));
 

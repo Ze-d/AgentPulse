@@ -338,8 +338,7 @@ pub fn ensure_codex_hooks_installed(
     config_path: &Path,
     hook_binary: &str,
 ) -> Result<String, String> {
-    let (code, stdout, stderr) =
-        run_codex_hook_cmd(hook_binary, Some(config_path), "install")?;
+    let (code, stdout, stderr) = run_codex_hook_cmd(hook_binary, Some(config_path), "install")?;
 
     if code == 0 {
         tracing::info!(path = %config_path.display(), "Codex AgentPulse hooks ensured");
@@ -355,8 +354,7 @@ pub fn ensure_codex_hooks_installed(
 ///
 /// Delegates to `agentpulse-hook --agent codex remove`.
 pub fn unregister_codex_hooks(config_path: &Path, hook_binary: &str) -> Result<String, String> {
-    let (code, stdout, stderr) =
-        run_codex_hook_cmd(hook_binary, Some(config_path), "remove")?;
+    let (code, stdout, stderr) = run_codex_hook_cmd(hook_binary, Some(config_path), "remove")?;
 
     if code == 0 {
         tracing::info!(path = %config_path.display(), "Codex AgentPulse hooks removed");
@@ -375,8 +373,7 @@ pub fn get_codex_hook_status(
     config_path: &Path,
     hook_binary: &str,
 ) -> Result<HashMap<String, bool>, String> {
-    let (code, stdout, stderr) =
-        run_codex_hook_cmd(hook_binary, Some(config_path), "status")?;
+    let (code, stdout, stderr) = run_codex_hook_cmd(hook_binary, Some(config_path), "status")?;
 
     if code != 0 {
         return Err(format!("codex status failed (exit {code}): {stderr}"));

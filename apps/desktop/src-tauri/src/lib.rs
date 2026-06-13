@@ -157,12 +157,10 @@ fn auto_install_hooks(
     };
 
     match hooks::extract_hook_binary(&resource_dir, &app_data_dir) {
-        Ok(hook_path) => {
-            match install_fn(&config_path, &hook_path.to_string_lossy()) {
-                Ok(status) => tracing::info!(status = %status, "{label} hooks"),
-                Err(e) => tracing::error!(error = %e, label, "failed to ensure hooks"),
-            }
-        }
+        Ok(hook_path) => match install_fn(&config_path, &hook_path.to_string_lossy()) {
+            Ok(status) => tracing::info!(status = %status, "{label} hooks"),
+            Err(e) => tracing::error!(error = %e, label, "failed to ensure hooks"),
+        },
         Err(e) => tracing::error!(error = %e, label, "failed to extract hook binary"),
     }
 }
@@ -191,8 +189,7 @@ pub fn run() {
     let addr: SocketAddr = format!("127.0.0.1:{}", config.port)
         .parse()
         .expect("Invalid event server address");
-    let shutdown = event_server::serve(db_for_server, addr)
-        .expect("Failed to start event server");
+    let shutdown = event_server::serve(db_for_server, addr).expect("Failed to start event server");
     tracing::debug!(port = config.port, "event server spawned (axum)");
 
     process_checker::start(db.clone(), config.check_interval_secs);
