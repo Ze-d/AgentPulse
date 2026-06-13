@@ -79,20 +79,21 @@ pub fn start(db: Arc<Mutex<Database>>, interval_secs: u64) {
                         pid = pid,
                         session_id = %session.session_id,
                         status = ?session.status,
-                        "process_checker: PID gone, removing session"
+                        "process_checker: PID gone, marking session as failed"
                     );
                     let d = match db.lock() {
                         Ok(d) => d,
                         Err(_) => {
-                            tracing::warn!("process_checker: DB lock poisoned during delete");
+                            tracing::warn!("process_checker: DB lock poisoned during mark_failed");
                             continue;
                         }
                     };
-                    if let Err(e) = d.delete_session(&session.session_id) {
+                    let now_ms = chrono::Utc::now().timestamp_millis();
+                    if let Err(e) = d.mark_session_failed(&session.session_id, now_ms) {
                         tracing::error!(
                             error = %e,
                             session_id = %session.session_id,
-                            "process_checker: failed to delete session"
+                            "process_checker: failed to mark session as failed"
                         );
                     }
                 }

@@ -29,18 +29,16 @@ describe("SessionCard", () => {
 
   // -- swipe availability ---------------------------------------------------
 
-  it("updates swipe availability when the reused session changes status", async () => {
+  it("allows swipe dismissal for running status (recovery from interrupted sessions)", async () => {
     const wrapper = mount(SessionCard, {
-      props: { session: makeSession({ status: "starting" }) },
+      props: { session: makeSession({ status: "running" }) },
     });
 
+    // All statuses including "running" should be swipeable so users can
+    // manually dismiss panels when the backend process checker cannot
+    // recover the session (e.g. hung process or missing PID).
     expect(wrapper.find(".session-card-wrapper").classes()).toContain("swipeable");
     expect(wrapper.find(".swipe-bg").exists()).toBe(true);
-
-    await wrapper.setProps({ session: makeSession({ status: "running" }) });
-
-    expect(wrapper.find(".session-card-wrapper").classes()).not.toContain("swipeable");
-    expect(wrapper.find(".swipe-bg").exists()).toBe(false);
   });
 
   // -- status color ---------------------------------------------------------

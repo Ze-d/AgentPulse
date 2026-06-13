@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch, onMounted, onUnmounted } from "vue";
+import { ref, watch, onMounted, onUnmounted, nextTick } from "vue";
 import { useSessionStore } from "../stores/sessionStore";
 import { getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
 import { hideMainWindow, getConfig } from "../utils/ipc";
@@ -10,9 +10,8 @@ import { openDirectory, openTranscript } from "../utils/openActions";
 
 const logger = createLogger("FloatingPanel");
 
-const HEADER_HEIGHT = 28;
-const CARD_HEIGHT = 40;  // 36px card min-height + 4px margin-bottom
-const PANEL_PADDING = 20;
+const MIN_WINDOW_HEIGHT = 72;
+const MAX_WINDOW_HEIGHT = 420;
 const DEFAULT_POLL_INTERVAL = 2000;
 
 const store = useSessionStore();
@@ -69,13 +68,20 @@ async function handleClose() {
 }
 
 async function adjustWindowSize() {
-  const expandedExtra = store.expandedSessionId ? 120 : 0;
+  // Wait for Vue to finish DOM updates so measurement reflects current state
+  await nextTick();
 
-  const contentHeight = store.sessions.length > 0
-    ? HEADER_HEIGHT + store.sessions.length * CARD_HEIGHT + PANEL_PADDING + expandedExtra
-    : 72;
+  const panelEl = document.querySelector(".floating-panel") as HTMLElement | null;
+  if (!panelEl) return;
 
-  const height = Math.min(Math.max(contentHeight, 72), 420);
+  // Temporarily remove the 100vh constraint so scrollHeight returns the
+  // natural content height instead of clientHeight (which would include
+  // padding on top of the constrained box, creating a +20px feedback loop).
+  panelEl.style.height = "auto";
+  const contentHeight = panelEl.scrollHeight;
+  panelEl.style.height = ""; // restore CSS height: 100vh
+
+  const height = Math.min(Math.max(contentHeight, MIN_WINDOW_HEIGHT), MAX_WINDOW_HEIGHT);
 
   try {
     await getCurrentWindow().setSize(new LogicalSize(320, height));

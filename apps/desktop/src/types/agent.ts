@@ -60,12 +60,23 @@ export const STATUS_LABELS: Record<AgentStatus, string> = {
   unknown: "?",
 };
 
-/** Statuses that allow the user to manually dismiss the session card via swipe. */
+/**
+ * Statuses that allow the user to manually dismiss the session card via swipe.
+ *
+ * All statuses are dismissable — this ensures users can always clean up panels
+ * even when a process is unexpectedly interrupted (crash, power loss, force
+ * quit) and the backend process checker cannot recover the session (e.g.
+ * because the PID was never captured or the process is hung but alive).
+ */
 export const DISMISSABLE_STATUSES: AgentStatus[] = [
   "completed",
   "starting",
   "failed",
   "unknown",
+  "running",
+  "tool_running",
+  "waiting_input",
+  "waiting_permission",
 ];
 
 export const STATUS_COLORS: Record<AgentStatus, string> = {
