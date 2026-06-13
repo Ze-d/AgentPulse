@@ -11,16 +11,27 @@ use crate::db::Database;
 use crate::state_machine::StateMachine;
 use crate::{AgentEvent, AgentSession, AgentSource, AgentStatus, EventType};
 
-/// Normalize a raw Claude Code hook JSON event into an `AgentEvent`.
-///
-/// Extracts `hook_event_name`, `session_id`, `cwd`, `transcript_path`,
-/// `notification_type`, `message`, `last_assistant_message`, and `tool_name`
-/// from the raw JSON and maps them to the corresponding `EventType` and
-/// `AgentStatus`. Derives `project_name` from the basename of `cwd`.
-pub fn normalize_claude_code_event(raw: &serde_json::Value) -> AgentEvent {
-    let hook_event_name = raw["hook_event_name"].as_str().unwrap_or("");
-    let session_id = raw["session_id"].as_str().unwrap_or("unknown");
-    let cwd = raw["cwd"].as_str().unwrap_or("");
+// ---------------------------------------------------------------------------
+// Common field extraction
+// ---------------------------------------------------------------------------
+
+/// Fields extracted from a raw hook JSON event, shared across all agent sources.
+struct CommonFields {
+    hook_event_name: String,
+    session_id: String,
+    cwd: String,
+    transcript_path: Option<String>,
+    message: Option<String>,
+    tool_name: Option<String>,
+    process_pid: Option<u32>,
+    project_name: Option<String>,
+}
+
+/// Extract fields common to all agent sources from a raw hook JSON value.
+fn extract_common_fields(raw: &serde_json::Value) -> CommonFields {
+    let hook_event_name = raw["hook_event_name"].as_str().unwrap_or("").to_string();
+    let session_id = raw["session_id"].as_str().unwrap_or("unknown").to_string();
+    let cwd = raw["cwd"].as_str().unwrap_or("").to_string();
     let transcript_path = raw["transcript_path"].as_str().map(|s| s.to_string());
 
     // Prefer `message` field; fall back to `last_assistant_message`.
@@ -30,48 +41,127 @@ pub fn normalize_claude_code_event(raw: &serde_json::Value) -> AgentEvent {
         .map(|s| s.to_string());
 
     let tool_name = raw["tool_name"].as_str().map(|s| s.to_string());
-    let notification_type = raw["notification_type"].as_str().unwrap_or("");
     let process_pid = raw["process_pid"].as_u64().map(|v| v as u32);
 
     // Derive project name from the last path component of cwd.
     let project_name = if cwd.is_empty() {
         None
     } else {
-        Path::new(cwd)
+        Path::new(&cwd)
             .file_name()
             .and_then(|n| n.to_str())
             .map(|s| s.to_string())
     };
 
-    let (event_type, status) = match hook_event_name {
+    CommonFields {
+        hook_event_name,
+        session_id,
+        cwd,
+        transcript_path,
+        message,
+        tool_name,
+        process_pid,
+        project_name,
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Event mapping strategies
+// ---------------------------------------------------------------------------
+
+/// Maps a `hook_event_name` (and optional raw fields) to an `(EventType, AgentStatus)`.
+type EventMapping = fn(&str, &serde_json::Value) -> (EventType, AgentStatus);
+
+/// Claude Code event mapping.
+///
+/// Claude Code uses `Notification` as a catch-all with sub-types:
+/// - `permission_prompt` → `WaitingPermission`
+/// - `idle_prompt` → `WaitingInput`
+/// - everything else → `Running`
+fn cc_event_mapping(hook_event_name: &str, raw: &serde_json::Value) -> (EventType, AgentStatus) {
+    match hook_event_name {
         "SessionStart" => (EventType::SessionStart, AgentStatus::Starting),
         "PreToolUse" => (EventType::PreToolUse, AgentStatus::ToolRunning),
         "PostToolUse" => (EventType::PostToolUse, AgentStatus::Running),
         "PostToolUseFailure" => (EventType::Failure, AgentStatus::Failed),
         "Stop" | "SubagentStop" => (EventType::Stop, AgentStatus::Completed),
-        "Notification" => match notification_type {
-            "permission_prompt" => (EventType::PermissionRequest, AgentStatus::WaitingPermission),
-            "idle_prompt" => (EventType::Notification, AgentStatus::WaitingInput),
-            _ => (EventType::Notification, AgentStatus::Running),
-        },
+        "Notification" => {
+            let notification_type = raw["notification_type"].as_str().unwrap_or("");
+            match notification_type {
+                "permission_prompt" => {
+                    (EventType::PermissionRequest, AgentStatus::WaitingPermission)
+                }
+                "idle_prompt" => (EventType::Notification, AgentStatus::WaitingInput),
+                _ => (EventType::Notification, AgentStatus::Running),
+            }
+        }
         "UserPromptSubmit" => (EventType::Notification, AgentStatus::Running),
         _ => (EventType::Notification, AgentStatus::Running),
-    };
+    }
+}
+
+/// Codex event mapping.
+///
+/// Codex uses `PermissionRequest` as a top-level hook event (unlike Claude Code
+/// which uses `Notification` sub-types).  `PostToolUseFailure` and `Notification`
+/// are not emitted by Codex.
+fn codex_event_mapping(
+    hook_event_name: &str,
+    _raw: &serde_json::Value,
+) -> (EventType, AgentStatus) {
+    match hook_event_name {
+        "SessionStart" => (EventType::SessionStart, AgentStatus::Starting),
+        "PreToolUse" => (EventType::PreToolUse, AgentStatus::ToolRunning),
+        "PostToolUse" => (EventType::PostToolUse, AgentStatus::Running),
+        "PermissionRequest" => (EventType::PermissionRequest, AgentStatus::WaitingPermission),
+        "Stop" | "SubagentStop" => (EventType::Stop, AgentStatus::Completed),
+        "UserPromptSubmit" => (EventType::Notification, AgentStatus::Running),
+        _ => (EventType::Notification, AgentStatus::Running),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Shared normalization
+// ---------------------------------------------------------------------------
+
+/// Build an `AgentEvent` from common fields + a source-specific event mapping.
+fn normalize_event_inner(
+    raw: &serde_json::Value,
+    source: AgentSource,
+    mapping: EventMapping,
+) -> AgentEvent {
+    let fields = extract_common_fields(raw);
+
+    let (event_type, status) = mapping(&fields.hook_event_name, raw);
 
     AgentEvent {
         id: Uuid::new_v4().to_string(),
-        source: AgentSource::ClaudeCode,
-        session_id: session_id.to_string(),
-        cwd: cwd.to_string(),
-        project_name,
+        source,
+        session_id: fields.session_id,
+        cwd: fields.cwd,
+        project_name: fields.project_name,
         event_type,
         status,
-        message,
-        tool_name,
-        transcript_path,
+        message: fields.message,
+        tool_name: fields.tool_name,
+        transcript_path: fields.transcript_path,
         created_at: Utc::now().timestamp_millis(),
-        process_pid,
+        process_pid: fields.process_pid,
     }
+}
+
+// ---------------------------------------------------------------------------
+// Public normalizers
+// ---------------------------------------------------------------------------
+
+/// Normalize a raw Claude Code hook JSON event into an `AgentEvent`.
+///
+/// Extracts `hook_event_name`, `session_id`, `cwd`, `transcript_path`,
+/// `notification_type`, `message`, `last_assistant_message`, and `tool_name`
+/// from the raw JSON and maps them to the corresponding `EventType` and
+/// `AgentStatus`.  Derives `project_name` from the basename of `cwd`.
+pub fn normalize_claude_code_event(raw: &serde_json::Value) -> AgentEvent {
+    normalize_event_inner(raw, AgentSource::ClaudeCode, cc_event_mapping)
 }
 
 /// Normalize a raw Codex CLI hook JSON event into an `AgentEvent`.
@@ -82,54 +172,7 @@ pub fn normalize_claude_code_event(raw: &serde_json::Value) -> AgentEvent {
 /// ignored.  Unlike Claude Code, `PermissionRequest` is its own top-level
 /// hook event rather than a `Notification` sub-type.
 pub fn normalize_codex_event(raw: &serde_json::Value) -> AgentEvent {
-    let hook_event_name = raw["hook_event_name"].as_str().unwrap_or("");
-    let session_id = raw["session_id"].as_str().unwrap_or("unknown");
-    let cwd = raw["cwd"].as_str().unwrap_or("");
-    let transcript_path = raw["transcript_path"].as_str().map(|s| s.to_string());
-
-    // Prefer `message` field; fall back to `last_assistant_message`.
-    let message = raw["message"]
-        .as_str()
-        .or_else(|| raw["last_assistant_message"].as_str())
-        .map(|s| s.to_string());
-
-    let tool_name = raw["tool_name"].as_str().map(|s| s.to_string());
-    let process_pid = raw["process_pid"].as_u64().map(|v| v as u32);
-
-    // Derive project name from the last path component of cwd.
-    let project_name = if cwd.is_empty() {
-        None
-    } else {
-        std::path::Path::new(cwd)
-            .file_name()
-            .and_then(|n| n.to_str())
-            .map(|s| s.to_string())
-    };
-
-    let (event_type, status) = match hook_event_name {
-        "SessionStart" => (EventType::SessionStart, AgentStatus::Starting),
-        "PreToolUse" => (EventType::PreToolUse, AgentStatus::ToolRunning),
-        "PostToolUse" => (EventType::PostToolUse, AgentStatus::Running),
-        "PermissionRequest" => (EventType::PermissionRequest, AgentStatus::WaitingPermission),
-        "Stop" | "SubagentStop" => (EventType::Stop, AgentStatus::Completed),
-        "UserPromptSubmit" => (EventType::Notification, AgentStatus::Running),
-        _ => (EventType::Notification, AgentStatus::Running),
-    };
-
-    AgentEvent {
-        id: Uuid::new_v4().to_string(),
-        source: AgentSource::Codex,
-        session_id: session_id.to_string(),
-        cwd: cwd.to_string(),
-        project_name,
-        event_type,
-        status,
-        message,
-        tool_name,
-        transcript_path,
-        created_at: Utc::now().timestamp_millis(),
-        process_pid,
-    }
+    normalize_event_inner(raw, AgentSource::Codex, codex_event_mapping)
 }
 
 /// Dispatch to the appropriate normalizer based on the `agent_source` field.
@@ -144,6 +187,10 @@ pub fn normalize_event_by_source(raw: &serde_json::Value) -> AgentEvent {
         _ => normalize_claude_code_event(raw),
     }
 }
+
+// ---------------------------------------------------------------------------
+// Event server
+// ---------------------------------------------------------------------------
 
 /// HTTP server that receives Claude Code hook events, normalizes them,
 /// applies the state machine, and persists the results via the `Database`.
@@ -219,8 +266,6 @@ impl EventServer {
                     transcript_path: event.transcript_path.clone().or(old.transcript_path),
                     needs_attention: StateMachine::needs_attention(&new_status),
                     // Prefer the new PID; fall back to the old one.
-                    // If old.pid was None but a new PID arrives (e.g. from a
-                    // later event), backfill it so process checker can work.
                     pid: event.process_pid.or(old.pid),
                 }
             }

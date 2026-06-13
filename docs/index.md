@@ -5,7 +5,7 @@
 - [流程文档索引](flows/README.md) — 全部流程的快速导航
 - [01. 应用启动](flows/01-app-startup.md) — 从 main() 到窗口显示
 - [02. Hooks 安装与配置](flows/02-hooks-installation.md) — 自动安装 + 手动安装
-- [03. 事件捕获与转发](flows/03-event-capture.md) — monitor_hook.py: stdin → HTTP
+- [03. 事件捕获与转发](flows/03-event-capture.md) — agentpulse-hook: stdin → HTTP
 - [04. 服务端事件处理](flows/04-event-processing.md) — HTTP 服务器 + 事件规范化
 - [05. 状态机转换](flows/05-state-machine.md) — 7 种状态 × 8 种事件的转换规则
 - [06. Session 生命周期](flows/06-session-lifecycle.md) — 从创建到清理的完整过程

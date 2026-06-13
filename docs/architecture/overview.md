@@ -14,7 +14,7 @@
 | Process Monitor | sysinfo 0.31 | 跨平台进程存活检测，跳过终态 session |
 | Logging | tracing + tracing-subscriber | stderr 文本 + JSON 文件轮转 |
 | Config | config.json + 环境变量 | 配置文件为主，环境变量覆盖 |
-| Adapter | Python 3 | Claude Code hook stdin → HTTP 转发 + 进程树遍历 |
+| Adapter | Rust (agentpulse-hook) | Claude Code / Codex hook stdin → HTTP 转发 + 进程检测 |
 | IPC | Tauri invoke | Rust ↔ Vue 数据流 |
 
 ## Architecture: 4 Layers
@@ -29,7 +29,7 @@
 │  │ (JSON)   │ │ (tracing)│ │ machine │ │
 │  └──────────┘ └──────────┘ └─────────┘ │
 ├─────────────────────────────────────────┤
-│  Hooks In (Python)  │  File In  │ ...  │  ← v1: Hooks only
+│  Hooks In (Rust)    │  File In  │ ...  │  ← v1: Hooks only
 ├─────────────────────────────────────────┤
 │  Agents (Claude Code / Codex / Gemini)  │
 └─────────────────────────────────────────┘
@@ -43,20 +43,20 @@
 4. **共享 Arc<Mutex<Database>>** — 事件服务器线程和 Tauri command handler 共享同一数据库实例
 5. **前端轮询而非 WebSocket** — 简单可靠，间隔可配置（默认 2s），单用户本地场景足够
 6. **无边框置顶窗口** — `decorations: false` + `alwaysOnTop: true` + `transparent: true`，最小尺寸 280x72，自适应高度最大 420px，12px 圆角，等宽字体终端风格
-7. **Python 适配器保持轻量** — 无第三方依赖，仅使用标准库 (json, urllib, argparse, logging)
+7. **Rust 适配器保持轻量** — 零依赖二进制，stdin → HTTP 转发 + 进程检测 + CLI 管理
 8. **结构化日志** — tracing 输出到 stderr（开发，可读文本）和 JSON 文件（持久化诊断，按小时轮转，自动清理 7 天前日志）
-9. **Session 生命周期展示 + 进程存活检测** — 活跃 session 卡片实时显示状态，完成后保留 "done" 标识，继续对话自动恢复。monitor_hook.py 通过 Windows `CreateToolhelp32Snapshot` API 向上遍历进程树获取 CC 真实 PID。Rust 后台线程定期检测 PID 存活：活跃 session PID 死亡 → 自动删除；Completed/Failed 等终态 session 跳过删除，保留展示
+9. **Session 生命周期展示 + 进程存活检测** — 活跃 session 卡片实时显示状态，完成后保留 "done" 标识，继续对话自动恢复。agentpulse-hook 通过 sysinfo 向上遍历进程树获取 agent 真实 PID。Rust 后台线程定期检测 PID 存活：活跃 session PID 死亡 → 自动删除；Completed/Failed 等终态 session 跳过删除，保留展示
 
 ## Data Flow
 
 ```
-Claude Code hook 触发
-  → settings.json 中的 hook 配置
-    → 执行 monitor_hook.py (stdin 传入 hook JSON)
-      → _walk_process_tree_to_cc() 向上遍历进程树获取 CC 真实 PID
-      → 注入 process_pid 到 event payload
+Claude Code / Codex hook 触发
+  → settings.json / config.toml 中的 hook 配置
+    → 执行 agentpulse-hook (stdin 传入 hook JSON)
+      → 进程检测获取 agent 真实 PID
+      → 注入 process_pid + agent_source 到 event payload
       → POST http://127.0.0.1:{port}/api/events
-        → normalize_claude_code_event() 提取 + 映射
+        → normalize_event_by_source() 提取 + 映射
           → StateMachine::transition() 验证状态流转
             → db.upsert_session() + db.insert_event()
               → Tauri get_sessions command → db.list_all_sessions()

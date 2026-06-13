@@ -1,0 +1,3 @@
+{"timestamp":"2026-06-13T02:53:50.124839Z","level":"INFO","fields":{"message":"AgentPulse hooks installed","path":"C:\\Users\\pw\\AppData\\Local\\Temp\\.tmpjSf8KP\\settings.json"},"target":"agentpulse_lib::hooks"}
+{"timestamp":"2026-06-13T02:53:50.124839Z","level":"INFO","fields":{"message":"AgentPulse hooks updated (path changed)","path":"C:\\Users\\pw\\AppData\\Local\\Temp\\.tmpEauWLs\\settings.json"},"target":"agentpulse_lib::hooks"}
+{"timestamp":"2026-06-13T02:53:50.124841Z","level":"INFO","fields":{"message":"test message without file logging"},"target":"agentpulse_lib::logging::tests"}
