@@ -7,3 +7,5 @@
 {"timestamp":"2026-06-13T06:02:51.343617Z","level":"INFO","fields":{"message":"test message without file logging"},"target":"agentpulse_lib::logging::tests"}
 {"timestamp":"2026-06-13T06:11:43.891833Z","level":"INFO","fields":{"message":"test message without file logging"},"target":"agentpulse_lib::logging::tests"}
 {"timestamp":"2026-06-13T11:56:11.624292Z","level":"INFO","fields":{"message":"test message without file logging"},"target":"agentpulse_lib::logging::tests"}
+{"timestamp":"2026-06-13T13:06:57.546172Z","level":"INFO","fields":{"message":"test message without file logging"},"target":"agentpulse_lib::logging::tests"}
+{"timestamp":"2026-06-13T13:11:33.605429Z","level":"INFO","fields":{"message":"test message without file logging"},"target":"agentpulse_lib::logging::tests"}
