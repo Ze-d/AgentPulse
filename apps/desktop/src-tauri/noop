@@ -5,3 +5,4 @@
 {"timestamp":"2026-06-13T05:53:28.404056Z","level":"INFO","fields":{"message":"test message without file logging"},"target":"agentpulse_lib::logging::tests"}
 {"timestamp":"2026-06-13T05:57:40.646747Z","level":"INFO","fields":{"message":"test message without file logging"},"target":"agentpulse_lib::logging::tests"}
 {"timestamp":"2026-06-13T06:02:51.343617Z","level":"INFO","fields":{"message":"test message without file logging"},"target":"agentpulse_lib::logging::tests"}
+{"timestamp":"2026-06-13T06:11:43.891833Z","level":"INFO","fields":{"message":"test message without file logging"},"target":"agentpulse_lib::logging::tests"}

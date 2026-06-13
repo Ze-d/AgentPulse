@@ -1,6 +1,6 @@
 [package]
 name = "agentpulse-hook"
-version = "0.4.0"
+version = "0.5.3"
 description = "AgentPulse hook adapter — zero-dependency event forwarder and hook manager"
 authors = ["Kal_zed"]
 repository = "https://github.com/Ze-d/AgentPulse"
