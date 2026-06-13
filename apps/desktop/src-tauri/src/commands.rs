@@ -113,7 +113,16 @@ pub fn get_codex_hook_status_cmd(
         .path()
         .resolve(".codex/config.toml", tauri::path::BaseDirectory::Home)
         .map_err(|e| e.to_string())?;
-    hooks::get_codex_hook_status(&config_path)
+    let resource_dir = app_handle
+        .path()
+        .resource_dir()
+        .map_err(|e| e.to_string())?;
+    let app_data_dir = app_handle
+        .path()
+        .app_data_dir()
+        .map_err(|e| e.to_string())?;
+    let hook_path = hooks::extract_hook_binary(&resource_dir, &app_data_dir)?;
+    hooks::get_codex_hook_status(&config_path, &hook_path.to_string_lossy())
 }
 
 #[tauri::command]
@@ -142,7 +151,16 @@ pub fn uninstall_codex_hooks_cmd(app_handle: tauri::AppHandle) -> Result<String,
         .path()
         .resolve(".codex/config.toml", tauri::path::BaseDirectory::Home)
         .map_err(|e| e.to_string())?;
-    hooks::unregister_codex_hooks(&config_path)
+    let resource_dir = app_handle
+        .path()
+        .resource_dir()
+        .map_err(|e| e.to_string())?;
+    let app_data_dir = app_handle
+        .path()
+        .app_data_dir()
+        .map_err(|e| e.to_string())?;
+    let hook_path = hooks::extract_hook_binary(&resource_dir, &app_data_dir)?;
+    hooks::unregister_codex_hooks(&config_path, &hook_path.to_string_lossy())
 }
 
 #[tauri::command]

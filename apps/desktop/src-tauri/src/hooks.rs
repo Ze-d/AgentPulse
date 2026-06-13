@@ -354,11 +354,9 @@ pub fn ensure_codex_hooks_installed(
 /// Remove the 6 AgentPulse Codex hook events from config.toml.
 ///
 /// Delegates to `agentpulse-hook --agent codex remove`.
-pub fn unregister_codex_hooks(config_path: &Path) -> Result<String, String> {
-    // The binary needs to exist.  Look for it in common locations.
-    let bin = find_codex_hook_binary()?;
+pub fn unregister_codex_hooks(config_path: &Path, hook_binary: &str) -> Result<String, String> {
     let (code, stdout, stderr) =
-        run_codex_hook_cmd(&bin, Some(config_path), "remove")?;
+        run_codex_hook_cmd(hook_binary, Some(config_path), "remove")?;
 
     if code == 0 {
         tracing::info!(path = %config_path.display(), "Codex AgentPulse hooks removed");
@@ -370,39 +368,15 @@ pub fn unregister_codex_hooks(config_path: &Path) -> Result<String, String> {
     }
 }
 
-/// Locate the agentpulse-hook binary without being given a path.
-///
-/// Used by `unregister_codex_hooks` when called from an IPC command where the
-/// binary path isn't readily available.
-fn find_codex_hook_binary() -> Result<String, String> {
-    let bin_name = if cfg!(target_os = "windows") {
-        "agentpulse-hook.exe"
-    } else {
-        "agentpulse-hook"
-    };
-
-    // Try the resource dir path first.
-    let resource_dir = std::env::current_exe()
-        .ok()
-        .and_then(|p| p.parent().map(|d| d.to_path_buf()));
-    if let Some(ref dir) = resource_dir {
-        let candidate = dir.join(bin_name);
-        if candidate.exists() {
-            return Ok(candidate.to_string_lossy().to_string());
-        }
-    }
-
-    // Fall back: assume it's on PATH.
-    Ok(bin_name.to_string())
-}
-
 /// Return `{event_name: bool}` indicating which Codex hooks are installed.
 ///
 /// Delegates to `agentpulse-hook --agent codex status` and parses the output.
-pub fn get_codex_hook_status(config_path: &Path) -> Result<HashMap<String, bool>, String> {
-    let bin = find_codex_hook_binary()?;
+pub fn get_codex_hook_status(
+    config_path: &Path,
+    hook_binary: &str,
+) -> Result<HashMap<String, bool>, String> {
     let (code, stdout, stderr) =
-        run_codex_hook_cmd(&bin, Some(config_path), "status")?;
+        run_codex_hook_cmd(hook_binary, Some(config_path), "status")?;
 
     if code != 0 {
         return Err(format!("codex status failed (exit {code}): {stderr}"));
