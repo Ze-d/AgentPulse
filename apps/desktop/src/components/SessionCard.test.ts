@@ -27,25 +27,118 @@ describe("SessionCard", () => {
     setActivePinia(createPinia());
   });
 
+  // -- swipe availability ---------------------------------------------------
+
   it("updates swipe availability when the reused session changes status", async () => {
     const wrapper = mount(SessionCard, {
+      props: { session: makeSession({ status: "starting" }) },
+    });
+
+    expect(wrapper.find(".session-card-wrapper").classes()).toContain("swipeable");
+    expect(wrapper.find(".swipe-bg").exists()).toBe(true);
+
+    await wrapper.setProps({ session: makeSession({ status: "running" }) });
+
+    expect(wrapper.find(".session-card-wrapper").classes()).not.toContain("swipeable");
+    expect(wrapper.find(".swipe-bg").exists()).toBe(false);
+  });
+
+  // -- status color ---------------------------------------------------------
+
+  it("renders correct border color for completed status", () => {
+    const wrapper = mount(SessionCard, {
+      props: { session: makeSession({ status: "completed" }) },
+    });
+
+    const card = wrapper.find(".session-card");
+    expect(card.attributes("style")).toContain("#a6e3a1"); // Catppuccin Green
+  });
+
+  it("renders correct border color for failed status", () => {
+    const wrapper = mount(SessionCard, {
+      props: { session: makeSession({ status: "failed" }) },
+    });
+
+    const card = wrapper.find(".session-card");
+    expect(card.attributes("style")).toContain("#f38ba8"); // Catppuccin Red
+  });
+
+  it("renders correct border color for running status", () => {
+    const wrapper = mount(SessionCard, {
+      props: { session: makeSession({ status: "running" }) },
+    });
+
+    const card = wrapper.find(".session-card");
+    expect(card.attributes("style")).toContain("#94e2d5"); // Catppuccin Teal
+  });
+
+  // -- click event ----------------------------------------------------------
+
+  it("emits click with sessionId when card is clicked", async () => {
+    const wrapper = mount(SessionCard, {
+      props: { session: makeSession({ sessionId: "click-test-1" }) },
+    });
+
+    await wrapper.find(".session-card").trigger("click");
+
+    expect(wrapper.emitted("click")).toBeTruthy();
+    expect(wrapper.emitted("click")![0]).toEqual(["click-test-1"]);
+  });
+
+  // -- tool name display ----------------------------------------------------
+
+  it("displays tool name when session has lastToolName", () => {
+    const wrapper = mount(SessionCard, {
       props: {
-        session: makeSession({ status: "starting" }),
+        session: makeSession({
+          status: "tool_running",
+          lastToolName: "Bash",
+        }),
       },
     });
 
-    expect(wrapper.find(".session-card-wrapper").classes()).toContain(
-      "swipeable",
-    );
-    expect(wrapper.find(".swipe-bg").exists()).toBe(true);
+    expect(wrapper.find(".tool").text()).toBe("Bash");
+  });
 
-    await wrapper.setProps({
-      session: makeSession({ status: "running" }),
+  it("does not render tool row when lastToolName is absent", () => {
+    const wrapper = mount(SessionCard, {
+      props: { session: makeSession({ lastToolName: undefined }) },
     });
 
-    expect(wrapper.find(".session-card-wrapper").classes()).not.toContain(
-      "swipeable",
-    );
-    expect(wrapper.find(".swipe-bg").exists()).toBe(false);
+    expect(wrapper.find(".tool").exists()).toBe(false);
+  });
+
+  // -- attention pulse ------------------------------------------------------
+
+  it("applies attention class when session needs attention", () => {
+    const wrapper = mount(SessionCard, {
+      props: { session: makeSession({ needsAttention: true }) },
+    });
+
+    expect(wrapper.find(".session-card").classes()).toContain("attention");
+  });
+
+  it("does not apply attention class normally", () => {
+    const wrapper = mount(SessionCard, {
+      props: { session: makeSession({ needsAttention: false }) },
+    });
+
+    expect(wrapper.find(".session-card").classes()).not.toContain("attention");
+  });
+
+  // -- project name / source abbreviation -----------------------------------
+
+  it("renders source abbreviation and project name", () => {
+    const wrapper = mount(SessionCard, {
+      props: {
+        session: makeSession({
+          source: "codex",
+          projectName: "my-project",
+        }),
+      },
+    });
+
+    expect(wrapper.find(".project").text()).toContain("cx");
+    expect(wrapper.find(".project").text()).toContain("my-project");
   });
 });

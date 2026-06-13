@@ -229,6 +229,14 @@ fn find_event_end(lines: &[String], start: usize) -> usize {
     lines.len()
 }
 
+fn event_entry_matches(lines: &[String], event: &str, expected: &str) -> bool {
+    let Some(start) = find_event_start(lines, event) else {
+        return false;
+    };
+    let end = find_event_end(lines, start);
+    lines[start..end].join("\n").trim() == expected.trim()
+}
+
 fn reassemble_toml(sections: &BTreeMap<String, Vec<String>>) -> String {
     let mut out = String::new();
     if let Some(top) = sections.get("_top") {
@@ -260,20 +268,6 @@ fn codex_install(path: &Path, binary: &str, force: bool) -> String {
         String::new()
     };
 
-    if !force {
-        let all_ok = CODEX_HOOK_EVENTS
-            .iter()
-            .all(|e| existing_raw.contains(&format!("{e} =")));
-        if all_ok {
-            return "already_installed".to_string();
-        }
-    }
-
-    // Backup
-    if path.exists() {
-        let _ = std::fs::copy(path, path.with_extension("toml.bak"));
-    }
-
     let escaped = binary.replace('\\', "\\\\").replace('\'', "\\'");
     let mut sections = parse_toml_sections(&existing_raw);
 
@@ -283,6 +277,20 @@ fn codex_install(path: &Path, binary: &str, force: bool) -> String {
         .collect();
 
     let hooks_lines = sections.entry("hooks".to_string()).or_default();
+
+    if !force {
+        let all_ok = our_entries
+            .iter()
+            .all(|(event, entry)| event_entry_matches(hooks_lines, event, entry));
+        if all_ok {
+            return "already_installed".to_string();
+        }
+    }
+
+    // Backup
+    if path.exists() {
+        let _ = std::fs::copy(path, path.with_extension("toml.bak"));
+    }
 
     // Remove existing entries for our events
     for (event, _) in &our_entries {
@@ -559,6 +567,25 @@ mod tests {
             codex_install(&p, "/usr/bin/agentpulse-hook", false),
             "already_installed"
         );
+    }
+
+    #[test]
+    fn test_codex_install_updates_stale_binary_path() {
+        let dir = TempDir::new().unwrap();
+        let p = dir.path().join("config.toml");
+        assert_eq!(
+            codex_install(&p, "/old/bin/agentpulse-hook", false),
+            "installed"
+        );
+
+        assert_eq!(
+            codex_install(&p, "/new/bin/agentpulse-hook", false),
+            "installed"
+        );
+
+        let content = std::fs::read_to_string(&p).unwrap();
+        assert!(content.contains("/new/bin/agentpulse-hook"));
+        assert!(!content.contains("/old/bin/agentpulse-hook"));
     }
 
     #[test]

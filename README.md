@@ -6,7 +6,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.4.0-blue" alt="version">
+  <img src="https://img.shields.io/badge/version-0.5.3-blue" alt="version">
   <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-blueviolet" alt="platform">
   <img src="https://img.shields.io/badge/license-MIT-green" alt="license">
 </p>
@@ -34,7 +34,7 @@ AgentPulse 用一个**桌面悬浮窗**解决这个问题：它通过 Claude Cod
 - **系统托盘** — 关闭窗口最小化到托盘而非退出。首次关闭时询问偏好（托盘/退出），可记住选择。右键托盘菜单可随时退出
 - **规范化状态机** — 从 Starting → Running → ToolRunning → WaitingInput/WaitingPermission → Completed/Failed，以统一模型规范化 CC hook 事件
 - **结构化日志** — tracing 日志输出到 stderr（开发）和 JSON 文件（持久化诊断），支持按模块过滤
-- **可配置化** — 配置文件 `config.json` 管理端口、轮询间隔、Python 解释器，环境变量可覆盖（CI 友好）
+- **可配置化** — 配置文件 `config.json` 管理端口、轮询间隔、进程检查间隔，环境变量可覆盖（CI 友好）
 - **本地优先** — SQLite 持久化存储，所有数据在本地。不上传源码，不上传对话记录，不连外网
 - **多源预留** — AgentSource 枚举已支持 Claude Code / Codex / Gemini / Copilot 四种来源
 
@@ -57,8 +57,7 @@ AgentPulse 用一个**桌面悬浮窗**解决这个问题：它通过 Claude Cod
 | 工具 | 最低版本 | 用途 |
 |------|---------|------|
 | Node.js | >= 18 | 前端构建 |
-| Rust | >= 1.70 (MSVC toolchain) | Tauri 后端 |
-| Python | >= 3.8 | Hook 适配器 |
+| Rust | >= 1.70 (MSVC toolchain) | Tauri 后端 + Hook 适配器 |
 
 ```powershell
 # 克隆仓库
@@ -119,7 +118,6 @@ agentpulse-hook remove
 {
   "port": 17878,
   "checkIntervalSecs": 5,
-  "python": null,
   "pollIntervalMs": 2000
 }
 ```
@@ -128,10 +126,9 @@ agentpulse-hook remove
 |------|--------|------|
 | `port` | `17878` | HTTP 事件服务器端口 |
 | `checkIntervalSecs` | `5` | 进程存活检查间隔（秒） |
-| `python` | 自动检测 | Python 解释器（`null` = 自动探测 `python3` → `python`） |
 | `pollIntervalMs` | `2000` | 前端轮询间隔（毫秒） |
 
-环境变量 `AGENTPULSE_PORT`、`AGENTPULSE_CHECK_INTERVAL`、`AGENTPULSE_PYTHON`、`AGENTPULSE_POLL_INTERVAL` 可覆盖配置文件。
+环境变量 `AGENTPULSE_PORT`、`AGENTPULSE_CHECK_INTERVAL`、`AGENTPULSE_POLL_INTERVAL` 可覆盖配置文件。
 
 ## 架构
 
@@ -158,7 +155,7 @@ Claude Code session 事件
 | 进程监控 | sysinfo 0.31 (跨平台 PID 存活检测) |
 | 日志 | tracing (stderr 文本 + JSON 文件轮转) |
 | 配置 | config.json + 环境变量覆盖 |
-| 适配器 | Python 3 标准库, 无第三方依赖 |
+| 适配器 | Rust (agentpulse-hook, 零依赖二进制) |
 
 ## 项目结构
 
@@ -186,10 +183,9 @@ AgentPulse/
 │   │   │   └── main.rs            # 二进制入口
 │   │   └── tests/                 # Rust 集成测试
 │   └── tauri.conf.json
-├── adapters/claude-code/          # Claude Code hook 适配器
+├── adapters/hook-adapter/         # Hook 适配器 (Rust 二进制)
 │   └── agentpulse-hook            # 零依赖 hook 适配器 (stdin → HTTP + CLI 安装管理)
 ├── tests/
-│   ├── unit/                      # Python 单元测试 (32 个)
 │   └── integration/               # E2E 冒烟测试
 ├── docs/                          # 文档
 │   ├── architecture/              # 架构设计
@@ -256,7 +252,7 @@ curl -X POST http://127.0.0.1:17878/api/events `
 ### 运行测试
 
 ```powershell
-# Rust 测试 (53 个)
+# Rust 测试 (53+ 个)
 cd apps/desktop/src-tauri && cargo test
 
 # 前端类型检查
@@ -264,12 +260,6 @@ cd apps/desktop && npx vue-tsc --noEmit
 
 # 前端单元测试
 cd apps/desktop && npm test
-
-# Python 测试 (32 个)
-python -m pytest tests/ -v
-
-# E2E 测试（需 AgentPulse 运行中）
-python tests/integration/test_e2e.py
 ```
 
 ## 打包发布

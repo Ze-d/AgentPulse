@@ -1,112 +1,101 @@
-use std::io::Read;
-use std::path::Path;
+use std::net::SocketAddr;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use std::thread;
 
+use axum::{
+    extract::State,
+    http::StatusCode,
+    routing::{get, post},
+    Json, Router,
+};
 use chrono::Utc;
+use serde_json::Value;
 use uuid::Uuid;
 
 use crate::db::Database;
 use crate::state_machine::StateMachine;
 use crate::{AgentEvent, AgentSession, AgentSource, AgentStatus, EventType};
 
-/// Normalize a raw Claude Code hook JSON event into an `AgentEvent`.
-///
-/// Extracts `hook_event_name`, `session_id`, `cwd`, `transcript_path`,
-/// `notification_type`, `message`, `last_assistant_message`, and `tool_name`
-/// from the raw JSON and maps them to the corresponding `EventType` and
-/// `AgentStatus`. Derives `project_name` from the basename of `cwd`.
-pub fn normalize_claude_code_event(raw: &serde_json::Value) -> AgentEvent {
-    let hook_event_name = raw["hook_event_name"].as_str().unwrap_or("");
-    let session_id = raw["session_id"].as_str().unwrap_or("unknown");
-    let cwd = raw["cwd"].as_str().unwrap_or("");
+// ---------------------------------------------------------------------------
+// Common field extraction
+// ---------------------------------------------------------------------------
+
+struct CommonFields {
+    hook_event_name: String,
+    session_id: String,
+    cwd: String,
+    transcript_path: Option<String>,
+    message: Option<String>,
+    tool_name: Option<String>,
+    process_pid: Option<u32>,
+    project_name: Option<String>,
+}
+
+fn extract_common_fields(raw: &Value) -> CommonFields {
+    let hook_event_name = raw["hook_event_name"].as_str().unwrap_or("").to_string();
+    let session_id = raw["session_id"].as_str().unwrap_or("unknown").to_string();
+    let cwd = raw["cwd"].as_str().unwrap_or("").to_string();
     let transcript_path = raw["transcript_path"].as_str().map(|s| s.to_string());
 
-    // Prefer `message` field; fall back to `last_assistant_message`.
     let message = raw["message"]
         .as_str()
         .or_else(|| raw["last_assistant_message"].as_str())
         .map(|s| s.to_string());
 
     let tool_name = raw["tool_name"].as_str().map(|s| s.to_string());
-    let notification_type = raw["notification_type"].as_str().unwrap_or("");
     let process_pid = raw["process_pid"].as_u64().map(|v| v as u32);
 
-    // Derive project name from the last path component of cwd.
     let project_name = if cwd.is_empty() {
         None
     } else {
-        Path::new(cwd)
+        std::path::Path::new(&cwd)
             .file_name()
             .and_then(|n| n.to_str())
             .map(|s| s.to_string())
     };
 
-    let (event_type, status) = match hook_event_name {
+    CommonFields {
+        hook_event_name,
+        session_id,
+        cwd,
+        transcript_path,
+        message,
+        tool_name,
+        process_pid,
+        project_name,
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Event mapping strategies
+// ---------------------------------------------------------------------------
+
+type EventMapping = fn(&str, &Value) -> (EventType, AgentStatus);
+
+fn cc_event_mapping(hook_event_name: &str, raw: &Value) -> (EventType, AgentStatus) {
+    match hook_event_name {
         "SessionStart" => (EventType::SessionStart, AgentStatus::Starting),
         "PreToolUse" => (EventType::PreToolUse, AgentStatus::ToolRunning),
         "PostToolUse" => (EventType::PostToolUse, AgentStatus::Running),
         "PostToolUseFailure" => (EventType::Failure, AgentStatus::Failed),
         "Stop" | "SubagentStop" => (EventType::Stop, AgentStatus::Completed),
-        "Notification" => match notification_type {
-            "permission_prompt" => (EventType::PermissionRequest, AgentStatus::WaitingPermission),
-            "idle_prompt" => (EventType::Notification, AgentStatus::WaitingInput),
-            _ => (EventType::Notification, AgentStatus::Running),
-        },
+        "Notification" => {
+            let notification_type = raw["notification_type"].as_str().unwrap_or("");
+            match notification_type {
+                "permission_prompt" => {
+                    (EventType::PermissionRequest, AgentStatus::WaitingPermission)
+                }
+                "idle_prompt" => (EventType::Notification, AgentStatus::WaitingInput),
+                _ => (EventType::Notification, AgentStatus::Running),
+            }
+        }
         "UserPromptSubmit" => (EventType::Notification, AgentStatus::Running),
         _ => (EventType::Notification, AgentStatus::Running),
-    };
-
-    AgentEvent {
-        id: Uuid::new_v4().to_string(),
-        source: AgentSource::ClaudeCode,
-        session_id: session_id.to_string(),
-        cwd: cwd.to_string(),
-        project_name,
-        event_type,
-        status,
-        message,
-        tool_name,
-        transcript_path,
-        created_at: Utc::now().timestamp_millis(),
-        process_pid,
     }
 }
 
-/// Normalize a raw Codex CLI hook JSON event into an `AgentEvent`.
-///
-/// Codex emits the same `hook_event_name` values (PascalCase) and the same
-/// `session_id`, `cwd`, `transcript_path` structure as Claude Code.  Extra
-/// Codex-only fields (`model`, `permission_mode`, `turn_id`) are silently
-/// ignored.  Unlike Claude Code, `PermissionRequest` is its own top-level
-/// hook event rather than a `Notification` sub-type.
-pub fn normalize_codex_event(raw: &serde_json::Value) -> AgentEvent {
-    let hook_event_name = raw["hook_event_name"].as_str().unwrap_or("");
-    let session_id = raw["session_id"].as_str().unwrap_or("unknown");
-    let cwd = raw["cwd"].as_str().unwrap_or("");
-    let transcript_path = raw["transcript_path"].as_str().map(|s| s.to_string());
-
-    // Prefer `message` field; fall back to `last_assistant_message`.
-    let message = raw["message"]
-        .as_str()
-        .or_else(|| raw["last_assistant_message"].as_str())
-        .map(|s| s.to_string());
-
-    let tool_name = raw["tool_name"].as_str().map(|s| s.to_string());
-    let process_pid = raw["process_pid"].as_u64().map(|v| v as u32);
-
-    // Derive project name from the last path component of cwd.
-    let project_name = if cwd.is_empty() {
-        None
-    } else {
-        std::path::Path::new(cwd)
-            .file_name()
-            .and_then(|n| n.to_str())
-            .map(|s| s.to_string())
-    };
-
-    let (event_type, status) = match hook_event_name {
+fn codex_event_mapping(hook_event_name: &str, _raw: &Value) -> (EventType, AgentStatus) {
+    match hook_event_name {
         "SessionStart" => (EventType::SessionStart, AgentStatus::Starting),
         "PreToolUse" => (EventType::PreToolUse, AgentStatus::ToolRunning),
         "PostToolUse" => (EventType::PostToolUse, AgentStatus::Running),
@@ -114,29 +103,47 @@ pub fn normalize_codex_event(raw: &serde_json::Value) -> AgentEvent {
         "Stop" | "SubagentStop" => (EventType::Stop, AgentStatus::Completed),
         "UserPromptSubmit" => (EventType::Notification, AgentStatus::Running),
         _ => (EventType::Notification, AgentStatus::Running),
-    };
-
-    AgentEvent {
-        id: Uuid::new_v4().to_string(),
-        source: AgentSource::Codex,
-        session_id: session_id.to_string(),
-        cwd: cwd.to_string(),
-        project_name,
-        event_type,
-        status,
-        message,
-        tool_name,
-        transcript_path,
-        created_at: Utc::now().timestamp_millis(),
-        process_pid,
     }
 }
 
-/// Dispatch to the appropriate normalizer based on the `agent_source` field.
-///
-/// - `"codex"` → `normalize_codex_event`
-/// - missing / `"claude-code"` / anything else → `normalize_claude_code_event` (backward compatible)
-pub fn normalize_event_by_source(raw: &serde_json::Value) -> AgentEvent {
+// ---------------------------------------------------------------------------
+// Shared normalization
+// ---------------------------------------------------------------------------
+
+fn normalize_event_inner(raw: &Value, source: AgentSource, mapping: EventMapping) -> AgentEvent {
+    let fields = extract_common_fields(raw);
+
+    let (event_type, status) = mapping(&fields.hook_event_name, raw);
+
+    AgentEvent {
+        id: Uuid::new_v4().to_string(),
+        source,
+        session_id: fields.session_id,
+        cwd: fields.cwd,
+        project_name: fields.project_name,
+        event_type,
+        status,
+        message: fields.message,
+        tool_name: fields.tool_name,
+        transcript_path: fields.transcript_path,
+        created_at: Utc::now().timestamp_millis(),
+        process_pid: fields.process_pid,
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Public normalizers
+// ---------------------------------------------------------------------------
+
+pub fn normalize_claude_code_event(raw: &Value) -> AgentEvent {
+    normalize_event_inner(raw, AgentSource::ClaudeCode, cc_event_mapping)
+}
+
+pub fn normalize_codex_event(raw: &Value) -> AgentEvent {
+    normalize_event_inner(raw, AgentSource::Codex, codex_event_mapping)
+}
+
+pub fn normalize_event_by_source(raw: &Value) -> AgentEvent {
     let agent_source = raw["agent_source"].as_str().unwrap_or("(none)");
     tracing::debug!(agent_source, "normalize_event_by_source dispatching");
     match raw["agent_source"].as_str() {
@@ -145,8 +152,12 @@ pub fn normalize_event_by_source(raw: &serde_json::Value) -> AgentEvent {
     }
 }
 
-/// HTTP server that receives Claude Code hook events, normalizes them,
-/// applies the state machine, and persists the results via the `Database`.
+// ---------------------------------------------------------------------------
+// Event server
+// ---------------------------------------------------------------------------
+
+/// Event server that normalizes hook events, applies the state machine, and
+/// persists results via the `Database`.  The HTTP layer is backed by axum.
 pub struct EventServer {
     db: Arc<Mutex<Database>>,
     shutdown: Arc<AtomicBool>,
@@ -160,7 +171,6 @@ impl EventServer {
         }
     }
 
-    /// Create an EventServer from an already-shared database reference.
     pub fn from_arc(db: Arc<Mutex<Database>>) -> Self {
         Self {
             db,
@@ -168,29 +178,23 @@ impl EventServer {
         }
     }
 
-    /// Signal the server thread to stop accepting new requests.
     pub fn shutdown(&self) {
         self.shutdown.store(true, Ordering::Relaxed);
     }
 
-    /// Return a clone of the shutdown flag for external signaling.
     pub fn shutdown_signal(&self) -> Arc<AtomicBool> {
         self.shutdown.clone()
     }
 
     /// Normalize the raw JSON event, apply the state-machine transition,
     /// upsert the session, insert the event, and return both.
-    pub fn handle_event(
-        &self,
-        raw: &serde_json::Value,
-    ) -> Result<(AgentEvent, AgentSession), String> {
+    pub fn handle_event(&self, raw: &Value) -> Result<(AgentEvent, AgentSession), String> {
         let event = normalize_event_by_source(raw);
 
         let db = self.db.lock().map_err(|e| format!("lock error: {}", e))?;
         let machine = StateMachine::new();
         let now = Utc::now().timestamp_millis();
 
-        // Look up an existing session or create a fresh one.
         let existing = db
             .get_session(&event.session_id)
             .map_err(|e| format!("db error: {}", e))?;
@@ -218,9 +222,6 @@ impl EventServer {
                     last_tool_name: event.tool_name.clone().or(old.last_tool_name),
                     transcript_path: event.transcript_path.clone().or(old.transcript_path),
                     needs_attention: StateMachine::needs_attention(&new_status),
-                    // Prefer the new PID; fall back to the old one.
-                    // If old.pid was None but a new PID arrives (e.g. from a
-                    // later event), backfill it so process checker can work.
                     pid: event.process_pid.or(old.pid),
                 }
             }
@@ -254,158 +255,132 @@ impl EventServer {
 
         Ok((event, session))
     }
+}
 
-    /// Create a `Database`, wrap it in an `EventServer`, and spawn a
-    /// `tiny_http` server on `addr` that handles three routes:
-    ///
-    /// - `POST /api/events`  -- accept event JSON, return 201
-    /// - `GET  /api/sessions` -- return active sessions as JSON
-    /// - `GET  /api/health`  -- return `{"status":"ok"}`
-    ///
-    /// Returns an `Arc<AtomicBool>` that can be used to signal graceful
-    /// shutdown of the server thread.
-    pub fn start(db: Database, addr: &str) -> Result<Arc<AtomicBool>, String> {
-        let server =
-            tiny_http::Server::http(addr).map_err(|e| format!("failed to start server: {}", e))?;
-        let event_server = Self::new(db);
-        let shutdown = event_server.shutdown_signal();
-        Self::run_server_loop(server, event_server);
-        Ok(shutdown)
-    }
+// ---------------------------------------------------------------------------
+// Axum handlers
+// ---------------------------------------------------------------------------
 
-    /// Start the event server with a shared database reference.
-    ///
-    /// Same as `start` but accepts an `Arc<Mutex<Database>>` directly,
-    /// allowing the caller to share the same database instance with other
-    /// components (e.g. Tauri state).
-    ///
-    /// Returns an `Arc<AtomicBool>` that can be used to signal graceful
-    /// shutdown of the server thread.
-    pub fn start_shared(db: Arc<Mutex<Database>>, addr: &str) -> Result<Arc<AtomicBool>, String> {
-        let server =
-            tiny_http::Server::http(addr).map_err(|e| format!("failed to start server: {}", e))?;
-        let event_server = Self::from_arc(db);
-        let shutdown = event_server.shutdown_signal();
-        Self::run_server_loop(server, event_server);
-        Ok(shutdown)
-    }
+type DbState = Arc<Mutex<Database>>;
 
-    /// Internal: spawn a thread that runs the HTTP request loop.
-    fn run_server_loop(server: tiny_http::Server, event_server: EventServer) {
-        thread::spawn(move || {
-            for mut request in server.incoming_requests() {
-                // Bug 1.6: check shutdown flag to allow graceful stop
-                if event_server.shutdown.load(Ordering::Relaxed) {
-                    tracing::info!("event_server: shutdown signaled, stopping accept loop");
-                    break;
-                }
-
-                let url = request.url().to_string();
-                let method = format!("{}", request.method());
-
-                let response = match (method.as_str(), url.as_str()) {
-                    ("POST", "/api/events") => {
-                        let mut body = String::new();
-                        let body_ok = request.as_reader().read_to_string(&mut body).is_ok();
-
-                        if !body_ok {
-                            tracing::warn!("event_server: failed to read request body");
-                            json_response(400, &serde_json::json!({"error": "failed to read body"}))
-                        } else {
-                            match serde_json::from_str::<serde_json::Value>(&body) {
-                                Ok(json) => match event_server.handle_event(&json) {
-                                    Ok((event, session)) => {
-                                        tracing::info!(
-                                            session_id = %event.session_id,
-                                            source = ?event.source,
-                                            event_type = ?event.event_type,
-                                            status = ?session.status,
-                                            "event processed"
-                                        );
-                                        json_response(
-                                            201,
-                                            &serde_json::json!({"event": event, "session": session}),
-                                        )
-                                    }
-                                    Err(e) => {
-                                        tracing::error!(
-                                            error = %e,
-                                            "event_server: handle_event failed"
-                                        );
-                                        json_response(500, &serde_json::json!({"error": e}))
-                                    }
-                                },
-                                Err(e) => {
-                                    tracing::warn!(
-                                        error = %e,
-                                        body_len = body.len(),
-                                        "event_server: invalid JSON body"
-                                    );
-                                    json_response(
-                                        400,
-                                        &serde_json::json!({"error": format!("invalid JSON: {}", e)}),
-                                    )
-                                }
-                            }
-                        }
-                    }
-                    ("GET", "/api/sessions") => match event_server.db.lock() {
-                        Ok(db) => match db.list_all_sessions() {
-                            Ok(sessions) => {
-                                tracing::debug!(count = sessions.len(), "GET /api/sessions");
-                                json_response(200, &serde_json::json!(sessions))
-                            }
-                            Err(e) => {
-                                tracing::error!(
-                                    error = %e,
-                                    "event_server: db list_sessions failed"
-                                );
-                                json_response(
-                                    500,
-                                    &serde_json::json!({"error": format!("db error: {}", e)}),
-                                )
-                            }
-                        },
-                        Err(e) => {
-                            tracing::error!(
-                                error = %e,
-                                "event_server: db lock poisoned on GET /api/sessions"
-                            );
-                            json_response(
-                                500,
-                                &serde_json::json!({"error": "internal server error"}),
-                            )
-                        }
-                    },
-                    ("GET", "/api/health") => {
-                        json_response(200, &serde_json::json!({"status": "ok"}))
-                    }
-                    _ => {
-                        tracing::debug!(
-                            method = %method,
-                            url = %url,
-                            "event_server: unknown route"
-                        );
-                        json_response(404, &serde_json::json!({"error": "not found"}))
-                    }
-                };
-
-                let _ = request.respond(response);
-            }
-        });
+async fn handle_post_events(
+    State(db): State<DbState>,
+    Json(payload): Json<Value>,
+) -> (StatusCode, Json<Value>) {
+    let server = EventServer::from_arc(db);
+    match server.handle_event(&payload) {
+        Ok((event, session)) => {
+            tracing::info!(
+                session_id = %event.session_id,
+                source = ?event.source,
+                event_type = ?event.event_type,
+                status = ?session.status,
+                "event processed"
+            );
+            (
+                StatusCode::CREATED,
+                Json(serde_json::json!({"event": event, "session": session})),
+            )
+        }
+        Err(e) => {
+            tracing::error!(error = %e, "event_server: handle_event failed");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": e})),
+            )
+        }
     }
 }
 
-/// Build a JSON HTTP response with the given status code.
-fn json_response(
-    status_code: u16,
-    data: &serde_json::Value,
-) -> tiny_http::Response<Box<dyn Read + Send>> {
-    let body = serde_json::to_string(data).unwrap_or_default();
-    tiny_http::Response::from_string(body)
-        .with_header(
-            tiny_http::Header::from_bytes(&b"Content-Type"[..], &b"application/json"[..]).unwrap(),
-        )
-        .with_status_code(tiny_http::StatusCode(status_code))
-        .boxed()
+async fn handle_get_sessions(State(db): State<DbState>) -> (StatusCode, Json<Value>) {
+    match db.lock() {
+        Ok(d) => match d.list_all_sessions() {
+            Ok(sessions) => {
+                tracing::debug!(count = sessions.len(), "GET /api/sessions");
+                (StatusCode::OK, Json(serde_json::json!(sessions)))
+            }
+            Err(e) => {
+                tracing::error!(error = %e, "event_server: db list_sessions failed");
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(serde_json::json!({"error": format!("db error: {}", e)})),
+                )
+            }
+        },
+        Err(e) => {
+            tracing::error!(error = %e, "event_server: db lock poisoned");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": "internal server error"})),
+            )
+        }
+    }
+}
+
+async fn handle_get_health() -> (StatusCode, Json<Value>) {
+    (StatusCode::OK, Json(serde_json::json!({"status": "ok"})))
+}
+
+// ---------------------------------------------------------------------------
+// Server startup
+// ---------------------------------------------------------------------------
+
+/// Build the axum router with all 3 routes.
+fn build_router(state: DbState) -> Router {
+    Router::new()
+        .route("/api/events", post(handle_post_events))
+        .route("/api/sessions", get(handle_get_sessions))
+        .route("/api/health", get(handle_get_health))
+        .with_state(state)
+}
+
+/// Start the axum HTTP server on a background thread with its own tokio
+/// runtime, and return a shutdown signal.  Call `shutdown.store(true)` to
+/// gracefully stop the server.
+///
+/// Replaces the previous `EventServer::start_shared` (tiny_http-based).
+pub fn serve(db: Arc<Mutex<Database>>, addr: SocketAddr) -> Result<Arc<AtomicBool>, String> {
+    let shutdown = Arc::new(AtomicBool::new(false));
+    let shutdown_for_signal = shutdown.clone();
+
+    std::thread::spawn(move || {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("build tokio runtime for event server");
+
+        rt.block_on(async move {
+            let listener = tokio::net::TcpListener::bind(addr)
+                .await
+                .map_err(|e| format!("bind {}: {}", addr, e))?;
+
+            tracing::info!(addr = %addr, "event server listening (axum)");
+
+            let app = build_router(db);
+
+            // Build a graceful-shutdown future from the AtomicBool.
+            let shutdown_signal = {
+                let flag = shutdown_for_signal;
+                async move {
+                    loop {
+                        if flag.load(Ordering::Relaxed) {
+                            tracing::info!("event_server: shutdown signaled");
+                            break;
+                        }
+                        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                    }
+                }
+            };
+
+            axum::serve(listener, app)
+                .with_graceful_shutdown(shutdown_signal)
+                .await
+                .map_err(|e| format!("server error: {}", e))?;
+
+            Ok::<_, String>(())
+        })
+        .expect("event server exited with error");
+    });
+
+    Ok(shutdown)
 }

@@ -5,8 +5,7 @@
 | 工具 | 版本 | 用途 |
 |------|------|------|
 | Node.js | >= 18 | 前端构建 |
-| Rust | >= 1.70 (MSVC toolchain) | Tauri 后端 |
-| Python | >= 3.8 | Hook 适配器脚本 |
+| Rust | >= 1.70 (MSVC toolchain) | Tauri 后端 + Hook 适配器 |
 | Git | 任意 | 版本控制 |
 
 ### Windows 特别说明
@@ -49,9 +48,8 @@ AgentPulse/
 │   │   └── tests/                 # Rust 集成测试
 │   ├── package.json
 │   └── tauri.conf.json
-├── adapters/claude-code/          # Claude Code hooks 适配器
-│   ├── monitor_hook.py            # 事件转发 + 进程树遍历获取 CC PID
-│   └── install_hooks.py           # 一键安装/卸载 hooks
+├── adapters/hook-adapter/         # Hook 适配器 (Rust 二进制)
+│   └── agentpulse-hook            # 事件转发 + 进程检测 + CLI 管理
 └── tests/integration/             # E2E 测试
 ```
 
@@ -147,13 +145,13 @@ curl http://127.0.0.1:17878/api/sessions
 对应卡片在 CC 终端关闭后约 5 秒自动消失。
 
 > **模拟测试提示：** 手动 curl 发送事件时需带上 `"process_pid": <真实PID>` 否则 session 无 PID，
-> 不会被自动清理。可以用 `--test` 模式查看 monitor_hook.py 默认注入的 PID。
+> 不会被自动清理。可以用 `--test` 模式查看 agentpulse-hook 默认注入的 PID。
 
-### 2.4 测试 Python Hook 适配器
+### 2.4 测试 Hook 适配器
 
 ```powershell
 # 模拟 Claude Code 通过 stdin 传入 hook 数据
-echo '{"session_id":"test-002","cwd":"D:/tmp","hook_event_name":"SessionStart"}' | python adapters/claude-code/monitor_hook.py
+echo '{"session_id":"test-002","cwd":"D:/tmp","hook_event_name":"SessionStart"}' | agentpulse-hook --test
 ```
 
 ---
@@ -167,7 +165,7 @@ cd apps/desktop/src-tauri
 cargo test
 ```
 
-预期：36 tests passed（8 db 单元 + 3 db 集成 + 5 event_server + 7 state_machine + 3 types + 10 hooks）
+预期：所有测试通过（db + event_server + state_machine + types + hooks + config）
 
 ### 3.2 前端类型检查
 
@@ -247,74 +245,69 @@ cargo build --release
 
 ---
 
-## 五、接入 Claude Code
+## 五、接入 Claude Code / Codex
 
-### 5.1 安装 Hooks
+AgentPulse 启动时会自动检测并安装 hooks（幂等操作），无需手动执行。以下为手动管理命令：
+
+### 5.1 手动安装 Hooks
 
 ```powershell
 # 预览将要执行的操作
-python adapters/claude-code/install_hooks.py --dry-run
+agentpulse-hook dry-run
 
-# 安装 hooks
-python adapters/claude-code/install_hooks.py
+# 安装 hooks 到 ~/.claude/settings.json
+agentpulse-hook install
 
 # 查看安装状态
-python adapters/claude-code/install_hooks.py --status
+agentpulse-hook status
+
+# Codex hooks
+agentpulse-hook --agent codex install
+agentpulse-hook --agent codex status
 ```
 
-这会在 `~/.claude/settings.json` 中写入 6 个 hook 事件的配置：
-
-- SessionStart
-- PreToolUse
-- PostToolUse
-- PostToolUseFailure
-- Notification
-- Stop
+这会在 `~/.claude/settings.json`（或 `~/.codex/config.toml`）中写入 hook 事件配置。
 
 ### 5.2 验证 Hooks 是否生效
 
 ```powershell
-# 方式 1: 使用 --status
-python adapters/claude-code/install_hooks.py --status
-
-# 方式 2: 直接查看配置
-python -c "import json; from pathlib import Path; s = json.loads(Path.home().joinpath('.claude', 'settings.json').read_text()); print(json.dumps(s.get('hooks', {}), indent=2))"
+agentpulse-hook status
 ```
 
-应能看到 `"hooks"` 字段包含 6 个事件配置，每个指向 `monitor_hook.py`。
+应能看到 6 个事件均标记为 `[OK]`。
 
 ### 5.3 卸载 Hooks
 
 ```powershell
-python adapters/claude-code/install_hooks.py --remove
+agentpulse-hook remove
+# Codex: agentpulse-hook --agent codex remove
 ```
 
 ### 5.4 调试 Hook 事件
 
 ```powershell
-# 测试 monitor_hook.py 是否正确解析 stdin（不发送到服务器）
-echo '{"session_id":"debug-1","cwd":"/tmp/test","hook_event_name":"SessionStart"}' | python adapters/claude-code/monitor_hook.py --test
+# 测试 hook 适配器是否正确解析 stdin（不发送到服务器）
+echo '{"session_id":"debug-1","cwd":"/tmp/test","hook_event_name":"SessionStart"}' | agentpulse-hook --test
 
 # 开启详细日志
 $env:AGENTPULSE_LOG_LEVEL = "DEBUG"
-echo '{"session_id":"debug-1","cwd":"/tmp/test","hook_event_name":"SessionStart"}' | python adapters/claude-code/monitor_hook.py
+echo '{"session_id":"debug-1","cwd":"/tmp/test","hook_event_name":"SessionStart"}' | agentpulse-hook
 
 # 指定事件服务器地址（如果非默认端口）
-$env:AGENTPULSE_URL = "http://127.0.0.1:9999/api/events"
-echo '...' | python adapters/claude-code/monitor_hook.py
+echo '...' | agentpulse-hook --url "http://127.0.0.1:9999/api/events"
 ```
 
 ### 5.5 使用流程
 
 1. 启动 AgentPulse：`npm run tauri dev`（或运行打包后的 exe）
-2. 正常使用 Claude Code
-3. AgentPulse 浮窗自动显示 CC session 状态
+2. 正常使用 Claude Code / Codex
+3. AgentPulse 浮窗自动显示 session 状态
 
 ### 5.6 安全说明
 
-- 安装和卸载操作会自动在修改前备份 `settings.json` → `settings.json.bak`
+- 安装和卸载操作会自动在修改前备份配置文件（`.bak` 后缀）
 - 重复安装不会覆盖已有配置（幂等操作），使用 `--force` 强制覆盖
-- 卸载时只移除 AgentPulse 的 6 个 hook 事件，保留其他自定义 hooks
+- 卸载时只移除 AgentPulse 的 hook 事件，保留其他自定义 hooks
 
 ---
 
@@ -342,10 +335,6 @@ rustup default stable-x86_64-pc-windows-msvc
 ### Q: curl POST 返回 400
 
 → 检查 JSON 格式，Windows PowerShell 的 curl 需要用反引号 ` 续行，且 JSON 内部只能用双引号。
-
-### Q: Python 脚本报 `python: command not found`
-
-→ 用 `python` 或 `python3`，取决于你的 Python 安装方式。Windows 上通常是 `python`。
 
 ### Q: 如何看到 Tauri 的日志输出
 

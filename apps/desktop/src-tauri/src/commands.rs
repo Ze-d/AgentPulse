@@ -4,6 +4,7 @@ use crate::hooks;
 use crate::AgentSession;
 use serde::Serialize;
 use std::collections::HashMap;
+use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex};
 use tauri::Manager;
 use tauri::State;
@@ -11,6 +12,10 @@ use tauri::State;
 pub struct AppState {
     pub db: Arc<Mutex<Database>>,
     pub config: AgentPulseConfig,
+    /// Shutdown signal for the event server thread — set to `true` when the
+    /// app is quitting so the server can stop accepting new requests and exit
+    /// its accept loop cleanly.
+    pub shutdown: Arc<AtomicBool>,
 }
 
 /// Subset of config exposed to the frontend.
@@ -108,7 +113,16 @@ pub fn get_codex_hook_status_cmd(
         .path()
         .resolve(".codex/config.toml", tauri::path::BaseDirectory::Home)
         .map_err(|e| e.to_string())?;
-    hooks::get_codex_hook_status(&config_path)
+    let resource_dir = app_handle
+        .path()
+        .resource_dir()
+        .map_err(|e| e.to_string())?;
+    let app_data_dir = app_handle
+        .path()
+        .app_data_dir()
+        .map_err(|e| e.to_string())?;
+    let hook_path = hooks::extract_hook_binary(&resource_dir, &app_data_dir)?;
+    hooks::get_codex_hook_status(&config_path, &hook_path.to_string_lossy())
 }
 
 #[tauri::command]
@@ -137,7 +151,16 @@ pub fn uninstall_codex_hooks_cmd(app_handle: tauri::AppHandle) -> Result<String,
         .path()
         .resolve(".codex/config.toml", tauri::path::BaseDirectory::Home)
         .map_err(|e| e.to_string())?;
-    hooks::unregister_codex_hooks(&config_path)
+    let resource_dir = app_handle
+        .path()
+        .resource_dir()
+        .map_err(|e| e.to_string())?;
+    let app_data_dir = app_handle
+        .path()
+        .app_data_dir()
+        .map_err(|e| e.to_string())?;
+    let hook_path = hooks::extract_hook_binary(&resource_dir, &app_data_dir)?;
+    hooks::unregister_codex_hooks(&config_path, &hook_path.to_string_lossy())
 }
 
 #[tauri::command]
