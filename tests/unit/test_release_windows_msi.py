@@ -20,6 +20,13 @@ def test_release_windows_build_explicitly_requests_msi_bundle():
     assert "--bundles ${{ matrix.bundles }}" in content
 
 
+def test_release_windows_build_uses_stable_runner_image():
+    content = RELEASE_WORKFLOW.read_text(encoding="utf-8")
+
+    assert "windows-latest" not in content
+    assert "windows-2022" in content
+
+
 def test_release_workflow_fails_when_windows_msi_is_missing():
     content = RELEASE_WORKFLOW.read_text(encoding="utf-8")
 
