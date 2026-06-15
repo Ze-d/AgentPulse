@@ -13,6 +13,11 @@ export default defineConfig(async () => ({
   // 1. prevent Vite from obscuring rust errors
   clearScreen: false,
   // 2. tauri expects a fixed port, fail if that port is not available
+  build: {
+    // Tauri targets modern WebViews. Keeping syntax modern avoids esbuild 0.28
+    // destructuring-lowering failures during release builds.
+    target: "esnext",
+  },
   server: {
     port: 1420,
     strictPort: true,
